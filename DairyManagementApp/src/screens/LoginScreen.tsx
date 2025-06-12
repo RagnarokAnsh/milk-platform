@@ -1,40 +1,57 @@
-import React, { useState, useRef } from 'react';
-import DatePicker from 'react-native-date-picker';
-import { Dropdown } from 'react-native-element-dropdown';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
   TextInput,
+  Image,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
-  StatusBar,
+  Animated,
   Alert,
+  StatusBar,
   ScrollView,
+  Dimensions,
+  Easing,
+  SafeAreaView,
+  PermissionsAndroid,
+  Platform,
 } from 'react-native';
-import { Eye, EyeOff, User, Phone, Lock, Calendar, Users } from 'lucide-react-native';
+import DatePicker from 'react-native-date-picker';
+import { Dropdown } from 'react-native-element-dropdown';
+import { loginUser, registerUser, getUsersList } from '../api';
+import Geolocation from 'react-native-geolocation-service';
+import { Eye, EyeOff, User, Phone, Lock, Calendar, Users, Milk } from 'lucide-react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { RootStackParamList } from '../types/navigation';
+import { RootStackParamList, User as UserType } from '../types/navigation';
 
 type LoginScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Login'>;
 
-interface Props {
-  navigation: LoginScreenNavigationProp;
-}
+const { width, height } = Dimensions.get('window');
 
-const LoginScreen: React.FC<Props> = ({ navigation }) => {
+const LoginScreen: React.FC<{ navigation: LoginScreenNavigationProp }> = ({ navigation }) => {
   const [currentScreen, setCurrentScreen] = useState('login'); // 'login', 'signup'
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const [date, setDate] = useState(new Date());
   const [open, setOpen] = useState(false);
   const [isGenderFocus, setIsGenderFocus] = useState(false);
+
+  // Animation values - Initialize properly
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const slideAnim = useRef(new Animated.Value(0)).current;
+  const logoRotateAnim = useRef(new Animated.Value(0)).current;
+  const logoScaleAnim = useRef(new Animated.Value(1)).current;
+  const cardScaleAnim = useRef(new Animated.Value(1)).current;
+  const buttonScaleAnim = useRef(new Animated.Value(1)).current;
+  const shakeAnimation = useRef(new Animated.Value(0)).current;
 
   const genderData = [
     { label: 'Male', value: 'male' },
     { label: 'Female', value: 'female' },
     { label: 'Other', value: 'other' },
   ];
+
   const [formData, setFormData] = useState({
     firstName: '',
     surname: '',
@@ -47,73 +64,261 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
     district: '',
     block: '',
     village: '',
+    latitude: null as number | null,
+    longitude: null as number | null,
   });
 
+  useEffect(() => {
+    // Logo rotation animation
+    const rotateAnimation = Animated.loop(
+      Animated.timing(logoRotateAnim, {
+        toValue: 1,
+        duration: 8000,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    );
+    rotateAnimation.start();
 
+    return () => rotateAnimation.stop();
+  }, []);
 
-  const handleInputChange = (field: keyof typeof formData, value: string) => {
+  const handleScreenTransition = (screen: string) => {
+    // Simple transition without complex animations
+    setCurrentScreen(screen);
+    
+    // Reset animation values to ensure proper display
+    fadeAnim.setValue(1);
+    slideAnim.setValue(0);
+  };
+
+  const handleButtonPress = () => {
+    Animated.sequence([
+      Animated.timing(buttonScaleAnim, {
+        toValue: 0.95,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(buttonScaleAnim, {
+        toValue: 1,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
+  const handleInputChange = (field: keyof typeof formData, value: string | number | null) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
+  const handleGetLocation = async () => {
+    if (Platform.OS === 'android') {
+      try {
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+          {
+            title: 'Location Permission',
+            message: 'This app needs access to your location for registration.',
+            buttonNeutral: 'Ask Me Later',
+            buttonNegative: 'Cancel',
+            buttonPositive: 'OK',
+          },
+        );
+        if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+          Alert.alert('Permission Denied', 'Location permission is required to sign up.');
+          return;
+        }
+      } catch (err) {
+        console.warn(err);
+        return;
+      }
+    }
 
+    Geolocation.getCurrentPosition(
+      (position) => {
+        setFormData(prev => ({
+          ...prev,
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        }));
+        Alert.alert('Success', 'Location fetched successfully!');
+      },
+      (error) => {
+        Alert.alert('Error', error.message);
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 },
+    );
+  };
 
-  const handleSignUp = () => {
-    console.log('Sign up data:', formData);
-    if (!formData.firstName || !formData.phone || !formData.password) {
+  const handleSignUp = async () => {
+    const {
+      firstName,
+      surname,
+      gender,
+      dob,
+      phone,
+      password,
+      confirmPassword,
+      state,
+      district,
+      block,
+      village,
+      latitude,
+      longitude,
+    } = formData;
+
+    if (!firstName || !phone || !password || !gender || !dob || !state || !district || !block || !village) {
       Alert.alert('Error', 'Please fill all required fields.');
       return;
     }
-    if (formData.password !== formData.confirmPassword) {
+    if (password !== confirmPassword) {
       Alert.alert('Error', 'Passwords do not match.');
       return;
     }
-    Alert.alert('Success', 'Account created successfully! Please log in.');
-    setCurrentScreen('login');
-  };
-
-  const handleLogin = () => {
-    console.log('Login data:', { phone: formData.phone, password: formData.password });
-    if (!formData.phone || !formData.password) {
-      Alert.alert('Error', 'Please enter phone and password.');
+    if (!latitude || !longitude) {
+      Alert.alert('Error', 'Please fetch your location before signing up.');
       return;
     }
-    Alert.alert('Success', 'Login successful!');
-    navigation.replace('HomeScreen');
+
+    const payload = {
+      firstName,
+      surname,
+      contactNumber: `+91${phone}`,
+      password,
+      confirmPassword,
+      gender: gender.charAt(0).toUpperCase() + gender.slice(1),
+      dob,
+      state,
+      district,
+      block,
+      village,
+      latitude,
+      longitude,
+    };
+
+    try {
+      await registerUser(payload);
+      Alert.alert('Success', 'Account created successfully! Please log in.');
+      handleScreenTransition('login');
+    } catch (error) {
+      console.error('Registration failed:', error);
+      Alert.alert('Registration Failed', 'An error occurred during registration. Please try again.');
+    }
   };
 
+  const handleLogin = async () => {
+    if (!formData.phone || !formData.password) {
+      Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
+    try {
+      // Step 1: Authenticate the user. We don't need the response since it's just a success message.
+      await loginUser({ contactNumber: `+91${formData.phone}`, password: formData.password });
 
+      // Step 2: Fetch the full list of users to find the details of the logged-in user.
+      const usersResponse = await getUsersList();
+      const allUsers = usersResponse.data;
+
+      // Step 3: Find the user by the contact number they used to log in.
+            const loggedInUser = allUsers.find((user: UserType) => user.contactNumber === `+91${formData.phone}`);
+
+      if (loggedInUser && loggedInUser.userId) {
+        Alert.alert('Success', 'Logged in successfully!');
+        // Navigate to the next screen with the found userId.
+        navigation.navigate('HomeScreen', { userId: loggedInUser.userId });
+      } else {
+        // This error means login was successful, but we couldn't find the user's details in the list.
+        console.error('Login Error: Could not find user details after successful authentication.');
+        Alert.alert('Login Error', 'Could not retrieve user details after login. Please try again.');
+      }
+    } catch (error) {
+      console.error(error);
+      Alert.alert('Login Failed', 'Invalid credentials or network error. Please try again.');
+      // Optional: Add shake animation for failed login attempt
+      Animated.sequence([
+        Animated.timing(shakeAnimation, { toValue: 10, duration: 100, useNativeDriver: true }),
+        Animated.timing(shakeAnimation, { toValue: -10, duration: 100, useNativeDriver: true }),
+        Animated.timing(shakeAnimation, { toValue: 10, duration: 100, useNativeDriver: true }),
+        Animated.timing(shakeAnimation, { toValue: 0, duration: 100, useNativeDriver: true })
+      ]).start();
+    }
+  };
+
+  const logoRotate = logoRotateAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+
+  const AnimatedLogo = () => (
+    <Animated.View
+      style={[
+        styles.logoContainer,
+        {
+          transform: [
+            { scale: logoScaleAnim },
+            { rotate: logoRotate },
+          ],
+        },
+      ]}
+    >
+      <View style={styles.logoInner}>
+        <Milk color="#fff" size={48} />
+      </View>
+      <View style={styles.logoRing} />
+    </Animated.View>
+  );
 
   const renderLoginScreen = () => (
-    <View style={styles.screenContainer}>
-      <View style={styles.card}>
+    <Animated.View
+      style={[
+        styles.screenContainer,
+        {
+          opacity: fadeAnim,
+          transform: [{ translateY: slideAnim }],
+        },
+      ]}
+    >
+      <Animated.View
+        style={[
+          styles.card,
+          {
+            transform: [{ scale: cardScaleAnim }],
+          },
+        ]}
+      >
         <View style={styles.header}>
-          <View style={[styles.iconContainer, {backgroundColor: '#4f46e5'}]}>
-            <User color="#fff" size={32} />
-          </View>
-          <Text style={styles.title}>Welcome!</Text>
-          <Text style={styles.subtitle}>Sign in to your account</Text>
+          <AnimatedLogo />
+          <Text style={styles.title}>Welcome Back!</Text>
+          <Text style={styles.subtitle}>Sign in to continue your journey</Text>
         </View>
 
         <View style={styles.form}>
           <View style={styles.inputContainer}>
-            <Phone style={styles.inputIcon} color="#9ca3af" size={20} />
+            <View style={styles.inputIconContainer}>
+              <Phone color="#6366f1" size={20} />
+            </View>
+            <Text style={styles.countryCodeInput}>+91</Text>
             <TextInput
               placeholder="Phone Number"
               value={formData.phone}
               onChangeText={(text) => handleInputChange('phone', text)}
-              style={styles.input}
+              style={[styles.input, styles.phoneInput]}
               keyboardType="phone-pad"
+              placeholderTextColor="#9ca3af"
             />
           </View>
 
           <View style={styles.inputContainer}>
-            <Lock style={styles.inputIcon} color="#9ca3af" size={20} />
+            <View style={styles.inputIconContainer}>
+              <Lock color="#6366f1" size={20} />
+            </View>
             <TextInput
               secureTextEntry={!showPassword}
               placeholder="Password"
               value={formData.password}
               onChangeText={(text) => handleInputChange('password', text)}
               style={styles.input}
+              placeholderTextColor="#9ca3af"
             />
             <TouchableOpacity
               onPress={() => setShowPassword(!showPassword)}
@@ -123,198 +328,278 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity onPress={handleLogin} style={[styles.button, {backgroundColor: '#6d28d9'}]}>
-            <Text style={styles.buttonText}>Sign In</Text>
-          </TouchableOpacity>
+          <Animated.View style={{ transform: [{ scale: buttonScaleAnim }] }}>
+            <TouchableOpacity
+              onPress={() => {
+                handleButtonPress();
+                handleLogin();
+              }}
+              style={styles.loginButton}
+            >
+              <Text style={styles.buttonText}>Sign In</Text>
+            </TouchableOpacity>
+          </Animated.View>
 
           <View style={styles.footer}>
-            <TouchableOpacity onPress={() => setCurrentScreen('signup')}>
-              <Text style={styles.footerText}>Don't have an account? <Text style={{color: '#4f46e5'}}>Sign Up</Text></Text>
+            <TouchableOpacity onPress={() => handleScreenTransition('signup')}>
+              <Text style={styles.footerText}>
+                Don't have an account?{' '}
+                <Text style={styles.linkText}>Sign Up</Text>
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </Animated.View>
+    </Animated.View>
+  );
+
+  const renderSignUpScreen = () => (
+    <View style={styles.signupScreenContainer}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContainer}
+        style={styles.scrollView}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.card}>
+          <View style={styles.header}>
+            <AnimatedLogo />
+            <Text style={styles.title}>Create Account</Text>
+            <Text style={styles.subtitle}>Join our milk management family</Text>
+          </View>
+
+          <View style={styles.form}>
+            <View style={styles.inputContainer}>
+              <View style={styles.inputIconContainer}>
+                <User color="#10b981" size={20} />
+              </View>
+              <TextInput
+                placeholder="First Name"
+                value={formData.firstName}
+                onChangeText={(text) => handleInputChange('firstName', text)}
+                style={styles.input}
+                placeholderTextColor="#9ca3af"
+              />
+            </View>
+
+            <View style={styles.inputContainer}>
+              <View style={styles.inputIconContainer}>
+                <User color="#10b981" size={20} />
+              </View>
+              <TextInput
+                placeholder="Surname"
+                value={formData.surname}
+                onChangeText={(text) => handleInputChange('surname', text)}
+                style={styles.input}
+                placeholderTextColor="#9ca3af"
+              />
+            </View>
+
+            <View style={styles.inputContainer}>
+              <View style={styles.inputIconContainer}>
+                <Users color="#10b981" size={20} />
+              </View>
+              <View style={styles.dropdownWrapper}>
+                <Dropdown
+                  style={styles.dropdown}
+                  placeholderStyle={styles.dropdownPlaceholder}
+                  selectedTextStyle={styles.dropdownSelected}
+                  inputSearchStyle={styles.inputSearchStyle}
+                  iconStyle={styles.iconStyle}
+                  data={genderData}
+                  maxHeight={300}
+                  labelField="label"
+                  valueField="value"
+                  placeholder={!isGenderFocus ? 'Select gender' : '...'}
+                  value={formData.gender}
+                  onFocus={() => setIsGenderFocus(true)}
+                  onBlur={() => setIsGenderFocus(false)}
+                  onChange={item => {
+                    handleInputChange('gender', item.value);
+                    setIsGenderFocus(false);
+                  }}
+                />
+              </View>
+            </View>
+
+            <TouchableOpacity onPress={() => setOpen(true)}>
+              <View style={styles.inputContainer}>
+                <View style={styles.inputIconContainer}>
+                  <Calendar color="#10b981" size={20} />
+                </View>
+                <View style={styles.dateInputWrapper}>
+                  <Text style={[styles.dateInputText, {color: formData.dob ? '#111827' : '#9ca3af'}]}>
+                    {formData.dob || 'Date of Birth'}
+                  </Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+
+            <View style={styles.inputContainer}>
+              <View style={styles.inputIconContainer}>
+                <Phone color="#10b981" size={20} />
+              </View>
+              <Text style={styles.countryCodeInput}>+91</Text>
+              <TextInput
+                placeholder="Phone Number"
+                value={formData.phone}
+                onChangeText={(text) => handleInputChange('phone', text)}
+                style={[styles.input, styles.phoneInput]}
+                keyboardType="phone-pad"
+                placeholderTextColor="#9ca3af"
+              />
+            </View>
+
+            <View style={styles.inputContainer}>
+              <View style={styles.inputIconContainer}>
+                <Lock color="#10b981" size={20} />
+              </View>
+              <TextInput
+                secureTextEntry={!showPassword}
+                placeholder="Password"
+                value={formData.password}
+                onChangeText={(text) => handleInputChange('password', text)}
+                style={styles.input}
+                placeholderTextColor="#9ca3af"
+              />
+              <TouchableOpacity
+                onPress={() => setShowPassword(!showPassword)}
+                style={styles.eyeIcon}
+              >
+                {showPassword ? <EyeOff color="#9ca3af" size={20} /> : <Eye color="#9ca3af" size={20} />}
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.inputContainer}>
+              <View style={styles.inputIconContainer}>
+                <Lock color="#10b981" size={20} />
+              </View>
+              <TextInput
+                secureTextEntry={!showConfirmPassword}
+                placeholder="Confirm Password"
+                value={formData.confirmPassword}
+                onChangeText={(text) => handleInputChange('confirmPassword', text)}
+                style={styles.input}
+                placeholderTextColor="#9ca3af"
+              />
+              <TouchableOpacity
+                onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                style={styles.eyeIcon}
+              >
+                {showConfirmPassword ? <EyeOff color="#9ca3af" size={20} /> : <Eye color="#9ca3af" size={20} />}
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.inputContainer}>
+              <View style={styles.inputIconContainer}>
+                <User color="#10b981" size={20} />
+              </View>
+              <TextInput
+                placeholder="State"
+                value={formData.state}
+                onChangeText={(text) => handleInputChange('state', text)}
+                style={styles.input}
+                placeholderTextColor="#9ca3af"
+              />
+            </View>
+
+            <View style={styles.inputContainer}>
+              <View style={styles.inputIconContainer}>
+                <User color="#10b981" size={20} />
+              </View>
+              <TextInput
+                placeholder="District"
+                value={formData.district}
+                onChangeText={(text) => handleInputChange('district', text)}
+                style={styles.input}
+                placeholderTextColor="#9ca3af"
+              />
+            </View>
+
+            <View style={styles.inputContainer}>
+              <View style={styles.inputIconContainer}>
+                <User color="#10b981" size={20} />
+              </View>
+              <TextInput
+                placeholder="Block"
+                value={formData.block}
+                onChangeText={(text) => handleInputChange('block', text)}
+                style={styles.input}
+                placeholderTextColor="#9ca3af"
+              />
+            </View>
+
+            <View style={styles.inputContainer}>
+              <View style={styles.inputIconContainer}>
+                <User color="#10b981" size={20} />
+              </View>
+              <TextInput
+                placeholder="Village"
+                value={formData.village}
+                onChangeText={(text) => handleInputChange('village', text)}
+                style={styles.input}
+                placeholderTextColor="#9ca3af"
+              />
+            </View>
+
+            <View style={styles.locationContainer}>
+              <TouchableOpacity onPress={handleGetLocation} style={styles.locationButton}>
+                <Text style={styles.buttonText}>Get Location</Text>
+              </TouchableOpacity>
+              {formData.latitude && formData.longitude && (
+                <Text style={styles.locationText}>
+                  Location Captured: Lat: {formData.latitude.toFixed(4)}, Lon: {formData.longitude.toFixed(4)}
+                </Text>
+              )}
+            </View>
+
+            <Animated.View style={{ transform: [{ scale: buttonScaleAnim }] }}>
+              <TouchableOpacity
+                onPress={() => {
+                  handleButtonPress();
+                  handleSignUp();
+                }}
+                style={styles.signupButton}
+              >
+                <Text style={styles.buttonText}>Create Account</Text>
+              </TouchableOpacity>
+            </Animated.View>
+
+            <View style={styles.footer}>
+              <TouchableOpacity onPress={() => handleScreenTransition('login')}>
+                <Text style={styles.footerText}>
+                  Already have an account?{' '}
+                  <Text style={styles.linkText}>Sign In</Text>
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </ScrollView>
+
+      <DatePicker
+        modal
+        open={open}
+        date={date}
+        mode="date"
+        onConfirm={(selectedDate) => {
+          setOpen(false);
+          setDate(selectedDate);
+          handleInputChange('dob', selectedDate.toISOString().split('T')[0]);
+        }}
+        onCancel={() => {
+          setOpen(false);
+        }}
+      />
     </View>
   );
 
-    const renderSignUpScreen = () => (
-    <ScrollView contentContainerStyle={{flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 20}} style={{backgroundColor: '#f0fdfa'}} keyboardShouldPersistTaps="handled">
-      <View style={styles.card}>
-        <View style={styles.header}>
-          <View style={[styles.iconContainer, {backgroundColor: '#22c55e'}]}>
-            <User color="#fff" size={32} />
-          </View>
-          <Text style={styles.title}>Create Account</Text>
-          <Text style={styles.subtitle}>Fill in your details to get started</Text>
-        </View>
-
-        <View style={styles.form}>
-          <View style={styles.inputContainer}>
-            <User style={styles.inputIcon} color="#9ca3af" size={20} />
-            <TextInput
-              placeholder="First Name"
-              value={formData.firstName}
-              onChangeText={(text) => handleInputChange('firstName', text)}
-              style={styles.input}
-            />
-          </View>
-
-          <View style={styles.inputContainer}>
-            <User style={styles.inputIcon} color="#9ca3af" size={20} />
-            <TextInput
-              placeholder="Surname"
-              value={formData.surname}
-              onChangeText={(text) => handleInputChange('surname', text)}
-              style={styles.input}
-            />
-          </View>
-          
-          <View style={styles.inputContainer}>
-            <Users style={styles.inputIcon} color="#9ca3af" size={20} />
-            <Dropdown
-              style={[styles.input, { paddingVertical: 0, paddingLeft: 10, height: 52 }]}
-              placeholderStyle={{ color: '#9ca3af', marginLeft: 30 }}
-              selectedTextStyle={{ marginLeft: 30, color: '#111827' }}
-              inputSearchStyle={styles.inputSearchStyle}
-              iconStyle={styles.iconStyle}
-              data={genderData}
-              maxHeight={300}
-              labelField="label"
-              valueField="value"
-              placeholder={!isGenderFocus ? 'Select gender' : '...'}
-              value={formData.gender}
-              onFocus={() => setIsGenderFocus(true)}
-              onBlur={() => setIsGenderFocus(false)}
-              onChange={item => {
-                handleInputChange('gender', item.value);
-                setIsGenderFocus(false);
-              }}
-            />
-          </View>
-          
-          <TouchableOpacity onPress={() => setOpen(true)}>
-            <View style={styles.inputContainer}>
-              <Calendar style={styles.inputIcon} color="#9ca3af" size={20} />
-              <Text style={[styles.input, {paddingTop: 15, color: formData.dob ? '#000' : '#9ca3af'}]}>
-                {formData.dob || 'Date of Birth'}
-              </Text>
-            </View>
-          </TouchableOpacity>
-          
-          <View style={styles.inputContainer}>
-            <Phone style={styles.inputIcon} color="#9ca3af" size={20} />
-            <Text style={styles.countryCode}>+91</Text>
-            <TextInput
-              placeholder="Phone Number"
-              value={formData.phone}
-              onChangeText={(text) => handleInputChange('phone', text)}
-              style={[styles.input, {paddingLeft: 85}]}
-              keyboardType="phone-pad"
-            />
-          </View>
-
-          <View style={styles.inputContainer}>
-            <Lock style={styles.inputIcon} color="#9ca3af" size={20} />
-            <TextInput
-              secureTextEntry={!showPassword}
-              placeholder="Password"
-              value={formData.password}
-              onChangeText={(text) => handleInputChange('password', text)}
-              style={styles.input}
-            />
-            <TouchableOpacity
-              onPress={() => setShowPassword(!showPassword)}
-              style={styles.eyeIcon}
-            >
-              {showPassword ? <EyeOff color="#9ca3af" size={20} /> : <Eye color="#9ca3af" size={20} />}
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.inputContainer}>
-            <Lock style={styles.inputIcon} color="#9ca3af" size={20} />
-            <TextInput
-              secureTextEntry={!showPassword}
-              placeholder="Confirm Password"
-              value={formData.confirmPassword}
-              onChangeText={(text) => handleInputChange('confirmPassword', text)}
-              style={styles.input}
-            />
-          </View>
-
-          <View style={styles.inputContainer}>
-            <User style={styles.inputIcon} color="#9ca3af" size={20} />
-            <TextInput
-              placeholder="State"
-              value={formData.state}
-              onChangeText={(text) => handleInputChange('state', text)}
-              style={styles.input}
-            />
-          </View>
-
-          <View style={styles.inputContainer}>
-            <User style={styles.inputIcon} color="#9ca3af" size={20} />
-            <TextInput
-              placeholder="District"
-              value={formData.district}
-              onChangeText={(text) => handleInputChange('district', text)}
-              style={styles.input}
-            />
-          </View>
-
-          <View style={styles.inputContainer}>
-            <User style={styles.inputIcon} color="#9ca3af" size={20} />
-            <TextInput
-              placeholder="Block"
-              value={formData.block}
-              onChangeText={(text) => handleInputChange('block', text)}
-              style={styles.input}
-            />
-          </View>
-
-          <View style={styles.inputContainer}>
-            <User style={styles.inputIcon} color="#9ca3af" size={20} />
-            <TextInput
-              placeholder="Village"
-              value={formData.village}
-              onChangeText={(text) => handleInputChange('village', text)}
-              style={styles.input}
-            />
-          </View>
-
-          <TouchableOpacity onPress={handleSignUp} style={[styles.button, {backgroundColor: '#16a34a'}]}>
-            <Text style={styles.buttonText}>Create Account</Text>
-          </TouchableOpacity>
-
-          <View style={styles.footer}>
-            <TouchableOpacity onPress={() => setCurrentScreen('login')}>
-              <Text style={styles.footerText}>Already have an account? <Text style={{color: '#16a34a'}}>Sign In</Text></Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-        <DatePicker
-          modal
-          open={open}
-          date={date}
-          mode="date"
-          onConfirm={(selectedDate) => {
-            setOpen(false);
-            setDate(selectedDate);
-            handleInputChange('dob', selectedDate.toISOString().split('T')[0]);
-          }}
-          onCancel={() => {
-            setOpen(false);
-          }}
-        />
-      </View>
-    </ScrollView>
-  );
-
-
-
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" />
-      <Text style={styles.mainHeading}>Milk Management System</Text>
+      <StatusBar barStyle="light-content" backgroundColor="#6366f1" />
+      <View style={styles.headerContainer}>
+        <Text style={styles.mainHeading}>Milk Management System</Text>
+      </View>
       {currentScreen === 'login' && renderLoginScreen()}
       {currentScreen === 'signup' && renderSignUpScreen()}
     </SafeAreaView>
@@ -324,60 +609,112 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#f8fafc',
   },
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#f3f4f6',
+  headerContainer: {
+    backgroundColor: '#6366f1',
+    paddingVertical: 20,
+    shadowColor: '#6366f1',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  mainHeading: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#ffffff',
+    textAlign: 'center',
+    letterSpacing: 0.5,
   },
   screenContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
-    backgroundColor: '#eef2ff',
+  },
+  signupScreenContainer: {
+    flex: 1,
+    backgroundColor: '#f8fafc',
+  },
+  scrollView: {
+    flex: 1,
+    backgroundColor: '#f8fafc',
+  },
+  scrollContainer: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    paddingBottom: 40,
   },
   card: {
     width: '100%',
     maxWidth: 400,
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 24,
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 32,
     shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 20,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 25,
+    elevation: 20,
+  },
+  header: {
+    alignItems: 'center',
+    marginBottom: 32,
+  },
+  logoContainer: {
+    width: 100,
+    height: 100,
+    marginBottom: 24,
+    position: 'relative',
+  },
+  logoInner: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#6366f1',
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    shadowColor: '#6366f1',
     shadowOffset: {
       width: 0,
       height: 10,
     },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.3,
     shadowRadius: 20,
-    elevation: 15,
+    elevation: 10,
   },
-  header: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  iconContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
+  logoRing: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    borderWidth: 3,
+    borderColor: '#e0e7ff',
+    position: 'absolute',
   },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#111827',
+    fontSize: 32,
+    fontWeight: '800',
+    color: '#1f2937',
+    marginBottom: 8,
+    textAlign: 'center',
   },
   subtitle: {
     fontSize: 16,
     color: '#6b7280',
-    marginTop: 4,
-  },
-  phoneText: {
-    fontSize: 16,
-    color: '#6b7280',
     textAlign: 'center',
-    marginBottom: 16,
+    lineHeight: 24,
   },
   form: {
     width: '100%',
@@ -385,69 +722,154 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 20,
     position: 'relative',
+    backgroundColor: '#f8fafc',
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+    minHeight: 56,
+  },
+  inputIconContainer: {
+    width: 50,
+    height: 56,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 14,
+    borderBottomLeftRadius: 14,
+    borderRightWidth: 2,
+    borderRightColor: '#e5e7eb',
   },
   input: {
     flex: 1,
-    height: 50,
-    paddingLeft: 40,
-    paddingRight: 40,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 10,
+    height: 56,
+    paddingHorizontal: 16,
     fontSize: 16,
+    color: '#1f2937',
+    backgroundColor: 'transparent',
   },
-  inputIcon: {
+  phoneInput: {
+    paddingLeft: 60,
+  },
+  countryCodeInput: {
     position: 'absolute',
-    left: 12,
+    left: 60,
+    fontSize: 16,
+    color: '#6b7280',
+    fontWeight: '600',
     zIndex: 1,
   },
-    countryCode: {
-    position: 'absolute',
-    left: 40,
+  dropdownWrapper: {
+    flex: 1,
+    height: 56,
+    justifyContent: 'center',
+  },
+  dropdown: {
+    flex: 1,
+    height: 56,
+    paddingHorizontal: 16,
+    backgroundColor: 'transparent',
+  },
+  dropdownPlaceholder: {
+    color: '#9ca3af',
     fontSize: 16,
-    color: '#111827',
-    zIndex: 1,
+  },
+  dropdownSelected: {
+    color: '#1f2937',
+    fontSize: 16,
+  },
+  dateInputWrapper: {
+    flex: 1,
+    height: 56,
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  dateInputText: {
+    fontSize: 16,
   },
   eyeIcon: {
     position: 'absolute',
-    right: 12,
+    right: 16,
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  button: {
-    paddingVertical: 16,
-    borderRadius: 10,
+  loginButton: {
+    backgroundColor: '#6366f1',
+    paddingVertical: 18,
+    borderRadius: 16,
     alignItems: 'center',
     marginTop: 8,
+    shadowColor: '#6366f1',
+    shadowOffset: {
+      width: 0,
+      height: 10,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  signupButton: {
+    backgroundColor: '#10b981',
+    paddingVertical: 18,
+    borderRadius: 16,
+    alignItems: 'center',
+    marginTop: 8,
+    shadowColor: '#10b981',
+    shadowOffset: {
+      width: 0,
+      height: 10,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  locationContainer: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  locationButton: {
+    backgroundColor: '#f59e0b',
+    paddingVertical: 18,
+    borderRadius: 16,
+    alignItems: 'center',
+    width: '100%',
+    shadowColor: '#f59e0b',
+    shadowOffset: {
+      width: 0,
+      height: 10,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
+    marginBottom: 10,
+  },
+  locationText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#4b5563',
+    fontWeight: '500',
   },
   buttonText: {
-    color: '#fff',
+    color: '#ffffff',
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
   footer: {
-    marginTop: 24,
+    marginTop: 32,
     alignItems: 'center',
   },
   footerText: {
-    fontSize: 14,
+    fontSize: 15,
     color: '#6b7280',
-  },
-  otpContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 24,
-  },
-  otpInput: {
-    width: 45,
-    height: 55,
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 10,
     textAlign: 'center',
-    fontSize: 20,
-    fontWeight: 'bold',
+  },
+  linkText: {
+    color: '#6366f1',
+    fontWeight: '600',
   },
   iconStyle: {
     width: 20,
@@ -457,14 +879,5 @@ const styles = StyleSheet.create({
     height: 40,
     fontSize: 16,
   },
-  mainHeading: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#111827',
-    textAlign: 'center',
-    paddingVertical: 20,
-    backgroundColor: '#f0fdfa',
-  },
 });
-
 export default LoginScreen;

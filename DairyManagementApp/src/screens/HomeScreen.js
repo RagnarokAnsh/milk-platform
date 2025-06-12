@@ -1,4 +1,3 @@
-// src/screens/HomeScreen.js
 import React from 'react';
 import {
   View,
@@ -10,17 +9,28 @@ import {
   Alert,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { LogOut } from 'lucide-react-native';
 
-const HomeScreen = ({ navigation }) => {
+const HomeScreen = ({ route, navigation }) => {
+  const { userId } = route.params;
+
+  const handleLogout = () => {
+    Alert.alert('Logout', 'Are you sure you want to log out?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Logout',
+        onPress: () => navigation.navigate('Login'),
+        style: 'destructive',
+      },
+    ]);
+  };
+
   const clearData = async () => {
     Alert.alert(
       'Clear All Data',
       'Are you sure you want to delete all dairy data? This action cannot be undone.',
       [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
+        { text: 'Cancel', style: 'cancel' },
         {
           text: 'Clear Data',
           onPress: async () => {
@@ -40,42 +50,39 @@ const HomeScreen = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#2E7D32" />
-      
+
       <View style={styles.header}>
-        <Text style={styles.title}>Milk Management System</Text>
-        {/* <Text style={styles.subtitle}>Prototype Version</Text> */}
+        <Text style={styles.title}>Milk Management</Text>
+        <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
+          <LogOut color="#fff" size={26} />
+        </TouchableOpacity>
       </View>
 
       <View style={styles.buttonContainer}>
         <TouchableOpacity
           style={styles.button}
-          onPress={() => navigation.navigate('FormScreen')}
-        >
+          onPress={() => navigation.navigate('FormScreen', { userId })}>
           <Text style={styles.buttonText}>📝 Add Dairy Data</Text>
           <Text style={styles.buttonSubtext}>Record new dairy information</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.button}
-          onPress={() => navigation.navigate('MapScreen')}
-        >
+          onPress={() => navigation.navigate('MapScreen')}>
           <Text style={styles.buttonText}>🗺️ View Map</Text>
           <Text style={styles.buttonSubtext}>See all dairy locations</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={[styles.button, styles.clearButton]}
-          onPress={clearData}
-        >
+          onPress={clearData}>
           <Text style={[styles.buttonText, styles.clearButtonText]}>🗑️ Clear All Data</Text>
           <Text style={styles.buttonSubtext}>Delete all saved entries</Text>
         </TouchableOpacity>
       </View>
 
       <View style={styles.footer}>
-        <Text style={styles.footerText}>
-          Digital Dairy Management System
-        </Text>
+        <Text style={styles.footerText}>Digital Dairy Management System</Text>
       </View>
     </SafeAreaView>
   );
@@ -87,8 +94,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#F5F5F5',
   },
   header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 40,
+    paddingVertical: 30,
+    paddingHorizontal: 20,
     backgroundColor: '#2E7D32',
     marginBottom: 40,
   },
@@ -96,11 +106,9 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     color: '#fff',
-    marginBottom: 8,
   },
-  subtitle: {
-    fontSize: 16,
-    color: '#C8E6C9',
+  logoutButton: {
+    padding: 8,
   },
   buttonContainer: {
     flex: 1,
@@ -114,10 +122,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
