@@ -1,10 +1,12 @@
 export type RootStackParamList = {
+  Infra: undefined;
   Login: undefined;
   Register: undefined;
   Dashboard: undefined;
   HomeScreen: { userId: number };
   FormScreen: { userId: number };
   MapScreen: undefined;
+  ScoreScreen: { userId: number };
   // Add other screens here as needed
 };
 
