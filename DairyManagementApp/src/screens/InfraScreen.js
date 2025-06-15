@@ -9,7 +9,6 @@ import {
   ScrollView,
   Alert,
   Animated,
-  Dimensions,
   Platform,
   Image,
   Modal,
@@ -17,7 +16,6 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import {
-  ArrowLeft,
   Camera,
   Upload,
   ChevronDown,
@@ -28,15 +26,17 @@ import {
   Home,
   Droplets,
   Wind,
-  Thermometer,
   Shield,
   Trash2,
   Send,
+  X,
 } from 'lucide-react-native';
-import LinearGradient from 'react-native-linear-gradient';
-import { launchImageLibrary, launchCamera } from 'react-native-image-picker';
-
-const { width, height } = Dimensions.get('window');
+import { launchCamera } from 'react-native-image-picker';
+import { COLORS, SPACING, TYPOGRAPHY, BORDER_RADIUS, SHADOWS, ANIMATIONS } from '../styles/globalStyles';
+import ModernHeader from '../components/common/ModernHeader';
+import AnimatedCard from '../components/common/AnimatedCard';
+import AnimatedButton from '../components/common/AnimatedButton';
+import LoadingSpinner from '../components/common/LoadingSpinner';
 
 const InfraScreen = ({ navigation, route }) => {
   const { userId, sectionId = 1 } = route.params || {};
@@ -47,19 +47,14 @@ const InfraScreen = ({ navigation, route }) => {
   const [uploadedImages, setUploadedImages] = useState({});
   const [scores, setScores] = useState({});
   const [submitting, setSubmitting] = useState({});
-  
-  // Track loading state per category instead of globally
-  const [loadingCategories, setLoadingCategories] = useState({});
 
-  // Animation values - simplified for smoother performance
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     fetchSubsections();
-    // Simplified initial animation
     Animated.timing(fadeAnim, {
       toValue: 1,
-      duration: 300,
+      duration: ANIMATIONS.timing.normal,
       useNativeDriver: true,
     }).start();
   }, [sectionId]);
@@ -113,7 +108,6 @@ const InfraScreen = ({ navigation, route }) => {
 
       if (response.ok) {
         Alert.alert('Success', 'Score submitted successfully!');
-        // Update local scores state
         setScores(prev => ({
           ...prev,
           [subsectionId]: scoreValue
@@ -130,7 +124,6 @@ const InfraScreen = ({ navigation, route }) => {
     }
   };
 
-  // Icon mapping for different subsection types
   const getIconForSubsection = (name) => {
     const nameLower = name.toLowerCase();
     if (nameLower.includes('flooring')) return Home;
@@ -139,65 +132,28 @@ const InfraScreen = ({ navigation, route }) => {
     if (nameLower.includes('airflow') || nameLower.includes('ventilation')) return Wind;
     if (nameLower.includes('drainage')) return Droplets;
     if (nameLower.includes('waste')) return Trash2;
-    return Home; // Default icon
+    return Home;
   };
 
   const scoreDescriptions = {
     1: {
-      text: 'Bad Practice',
-      color: '#EF4444',
+      text: 'Needs Improvement',
+      color: COLORS.error[500],
       icon: XCircle,
-      descriptions: {
-        'CATTLE SHED FLOORING': 'Kachcha floor made of mud or small stones. Areas are wet or have waterlogged patches.',
-        'CATTLE SHED ROOFING': 'Animals are tied in open without roof to protect from direct sunlight and rain.',
-        'SPACE INSIDE THE CATTLE SHED': 'There is not enough space in the shed, resulting in overcrowded living in cramped and uncomfortable conditions.',
-        'AIRFLOW AND VENTILATION IN CATTLE SHED': 'There is no or very minimal ventilation, leading to high heat and humidity, and foul odor inside the shed.',
-        'DRAINAGE SYSTEM INSIDE THE CATTLE SHED': 'No drainage inside the shed, leading to waterlogging and lots of flies.',
-        'WASTE MANAGEMENT': 'Lack a dung pit or organized system for waste and dung disposal. Dung and urine are scattered around the shed, attracting numerous flies.'
-      }
+      gradient: COLORS.gradients.error,
     },
     2: {
-      text: 'Needs Improvement',
-      color: '#F59E0B',
+      text: 'Fair Practice',
+      color: COLORS.warning[500],
       icon: AlertCircle,
-      descriptions: {
-        'CATTLE SHED FLOORING': 'Floor has some slippery areas but mostly adequate grip.',
-        'CATTLE SHED ROOFING': 'Roof height is low, with lowest point being less than 8 feet.',
-        'SPACE INSIDE THE CATTLE SHED': 'Space is limited but animals can move with some restrictions.',
-        'AIRFLOW AND VENTILATION IN CATTLE SHED': 'Limited provision for cross ventilation, leading to foul odor in the shed.',
-        'DRAINAGE SYSTEM INSIDE THE CATTLE SHED': 'The shed has a drain, but wastewater is not properly drained out, leading to waterlogging.',
-        'WASTE MANAGEMENT': 'The dung pit is constructed but poorly maintained. It is exposed or leaking, hindering drainage, and serving as a breeding ground for flies.'
-      }
+      gradient: COLORS.gradients.warning,
     },
     3: {
-      text: 'Good Practice',
-      color: '#10B981',
+      text: 'Best Practice',
+      color: COLORS.success[500],
       icon: CheckCircle,
-      descriptions: {
-        'CATTLE SHED FLOORING': 'Concrete floor with rubber mats to ensure adequate grip.',
-        'CATTLE SHED ROOFING': 'Roof is high enough for animals and provides excellent protection being more than 10-12 feet.',
-        'SPACE INSIDE THE CATTLE SHED': 'There is sufficient space in the shed and animals are staying in comfortable conditions.',
-        'AIRFLOW AND VENTILATION IN CATTLE SHED': 'Properly ventilated shed with adequate airflow, leading to low humidity, temperature, and no foul odor in the shed.',
-        'DRAINAGE SYSTEM INSIDE THE CATTLE SHED': 'The shed has proper drain that allows all wastewater to flow out easily, preventing any waterlogging in the shed.',
-        'WASTE MANAGEMENT': 'A concrete dung pit or biogas production structure is properly constructed and maintained. Drains are free from waterlogging.'
-      }
-    }
-  };
-
-  const getScoreColor = (score) => {
-    return scoreDescriptions[score]?.color || '#6B7280';
-  };
-
-  const getScoreText = (score) => {
-    return scoreDescriptions[score]?.text || 'Not Assessed';
-  };
-
-  const getScoreIcon = (score) => {
-    return scoreDescriptions[score]?.icon || Camera;
-  };
-
-  const getScoreDescription = (score, subsectionName) => {
-    return scoreDescriptions[score]?.descriptions[subsectionName] || 'No description available';
+      gradient: COLORS.gradients.success,
+    },
   };
 
   const toggleSection = (sectionId) => {
@@ -252,8 +208,6 @@ const InfraScreen = ({ navigation, route }) => {
 
       if (response.assets && response.assets[0]) {
         const imageUri = response.assets[0].uri;
-        
-        // Update uploaded images immediately
         setUploadedImages(prev => ({
           ...prev,
           [subsectionId]: imageUri
@@ -292,14 +246,17 @@ const InfraScreen = ({ navigation, route }) => {
               key={score}
               style={[
                 styles.scoreOption,
-                isSelected && { backgroundColor: scoreInfo.color + '20', borderColor: scoreInfo.color }
+                isSelected && { 
+                  borderColor: scoreInfo.color,
+                  backgroundColor: `${scoreInfo.color}10`
+                }
               ]}
               onPress={() => handleScoreSelect(score)}
               activeOpacity={0.7}
             >
-              <View style={styles.scoreOptionHeader}>
+              <View style={styles.scoreOptionContent}>
                 <View style={[styles.scoreOptionIcon, { backgroundColor: scoreInfo.color }]}>
-                  <ScoreIcon color="#fff" size={20} strokeWidth={2} />
+                  <ScoreIcon color={COLORS.text.inverse} size={20} strokeWidth={2} />
                 </View>
                 <View style={styles.scoreOptionInfo}>
                   <Text style={[styles.scoreOptionText, isSelected && { color: scoreInfo.color }]}>
@@ -307,44 +264,25 @@ const InfraScreen = ({ navigation, route }) => {
                   </Text>
                   <Text style={styles.scoreOptionValue}>Score: {score}</Text>
                 </View>
-                <View style={[styles.radioButton, isSelected && { backgroundColor: scoreInfo.color }]}>
+                <View style={[
+                  styles.radioButton, 
+                  isSelected && { backgroundColor: scoreInfo.color, borderColor: scoreInfo.color }
+                ]}>
                   {isSelected && <View style={styles.radioButtonInner} />}
                 </View>
               </View>
-              <Text style={styles.scoreOptionDescription}>
-                {getScoreDescription(score, subsection.name)}
-              </Text>
             </TouchableOpacity>
           );
         })}
 
-        <TouchableOpacity
-          style={[
-            styles.submitButton,
-            (!selectedScore || isSubmitting) && styles.submitButtonDisabled
-          ]}
+        <AnimatedButton
+          title={isSubmitting ? "Submitting..." : "Submit Score"}
           onPress={handleSubmit}
           disabled={!selectedScore || isSubmitting}
-          activeOpacity={0.8}
-        >
-          <LinearGradient
-            colors={
-              selectedScore && !isSubmitting 
-                ? ['#8B5CF6', '#7C3AED'] 
-                : ['#9CA3AF', '#6B7280']
-            }
-            style={styles.submitGradient}
-          >
-            {isSubmitting ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <>
-                <Send color="#fff" size={20} strokeWidth={2} />
-                <Text style={styles.submitButtonText}>Submit Score</Text>
-              </>
-            )}
-          </LinearGradient>
-        </TouchableOpacity>
+          icon={isSubmitting ? undefined : Send}
+          variant="primary"
+          style={styles.submitButton}
+        />
       </View>
     );
   };
@@ -354,46 +292,40 @@ const InfraScreen = ({ navigation, route }) => {
     const hasImage = uploadedImages[subsection.id];
     const score = scores[subsection.id];
     const SubsectionIcon = getIconForSubsection(subsection.name);
-    const ScoreIcon = getScoreIcon(score);
 
     return (
-      <View style={styles.categoryCard}>
+      <AnimatedCard
+        style={styles.categoryCard}
+        delay={index * 100}
+        animationType="fadeInUp"
+      >
         <TouchableOpacity
           style={styles.categoryHeader}
           onPress={() => toggleSection(subsection.id)}
           activeOpacity={0.8}
         >
-          <LinearGradient
-            colors={['#334155', '#475569']}
-            style={styles.categoryHeaderGradient}
-          >
-            <View style={styles.categoryHeaderContent}>
-              <View style={styles.categoryLeft}>
-                <View style={styles.categoryIcon}>
-                  <SubsectionIcon color="#fff" size={20} strokeWidth={2} />
-                </View>
-                <View style={styles.categoryInfo}>
-                  <Text style={styles.categoryTitle}>
-                    {subsection.name}
-                  </Text>
-                </View>
+          <View style={styles.categoryHeaderContent}>
+            <View style={styles.categoryLeft}>
+              <View style={styles.categoryIcon}>
+                <SubsectionIcon color={COLORS.primary[500]} size={20} strokeWidth={2} />
               </View>
-              <View style={styles.categoryRight}>
+              <View style={styles.categoryInfo}>
+                <Text style={styles.categoryTitle}>{subsection.name}</Text>
                 {score && (
-                  <View style={[styles.scoreIndicator, { backgroundColor: getScoreColor(score) }]}>
-                    <ScoreIcon color="#fff" size={16} strokeWidth={2} />
-                  </View>
+                  <Text style={[styles.categoryScore, { color: scoreDescriptions[score].color }]}>
+                    {scoreDescriptions[score].text}
+                  </Text>
                 )}
-                <View style={styles.chevronIcon}>
-                  {isExpanded ? (
-                    <ChevronUp color="#fff" size={20} strokeWidth={2} />
-                  ) : (
-                    <ChevronDown color="#fff" size={20} strokeWidth={2} />
-                  )}
-                </View>
               </View>
             </View>
-          </LinearGradient>
+            <View style={styles.categoryRight}>
+              {isExpanded ? (
+                <ChevronUp color={COLORS.text.secondary} size={20} strokeWidth={2} />
+              ) : (
+                <ChevronDown color={COLORS.text.secondary} size={20} strokeWidth={2} />
+              )}
+            </View>
+          </View>
         </TouchableOpacity>
 
         {isExpanded && (
@@ -406,48 +338,45 @@ const InfraScreen = ({ navigation, route }) => {
               {hasImage ? (
                 <View style={styles.imageContainer}>
                   <Image source={{ uri: hasImage }} style={styles.uploadedImage} />
-                  <View style={styles.imageOverlay}>
-                    <TouchableOpacity
-                      style={styles.retakeButton}
-                      onPress={() => handleImageUpload(subsection)}
-                    >
-                      <Camera color="#fff" size={16} strokeWidth={2} />
-                      <Text style={styles.retakeText}>Retake</Text>
-                    </TouchableOpacity>
-                  </View>
+                  <TouchableOpacity
+                    style={styles.retakeButton}
+                    onPress={() => handleImageUpload(subsection)}
+                    activeOpacity={0.8}
+                  >
+                    <Camera color={COLORS.text.inverse} size={16} strokeWidth={2} />
+                    <Text style={styles.retakeText}>Retake</Text>
+                  </TouchableOpacity>
                 </View>
               ) : (
-                <TouchableOpacity
-                  style={styles.uploadButton}
+                <AnimatedButton
+                  title="Upload Photo"
                   onPress={() => handleImageUpload(subsection)}
-                  activeOpacity={0.8}
-                >
-                  <LinearGradient
-                    colors={['#8B5CF6', '#7C3AED']}
-                    style={styles.uploadGradient}
-                  >
-                    <Upload color="#fff" size={24} strokeWidth={2} />
-                    <Text style={styles.uploadText}>Upload Photo</Text>
-                    <Text style={styles.uploadSubtext}>Take a photo to assess this category</Text>
-                  </LinearGradient>
-                </TouchableOpacity>
+                  icon={Upload}
+                  variant="secondary"
+                  style={styles.uploadButton}
+                />
               )}
 
               <ScoreSelector subsection={subsection} />
             </View>
           </View>
         )}
-      </View>
+      </AnimatedCard>
     );
   };
 
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
-        <StatusBar barStyle="light-content" backgroundColor="#0F172A" />
+        <StatusBar barStyle="light-content" backgroundColor={COLORS.primary[600]} />
+        <ModernHeader
+          title="Infrastructure Assessment"
+          subtitle="Loading..."
+          onBackPress={() => navigation.goBack()}
+          gradient={COLORS.gradients.primary}
+        />
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#8B5CF6" />
-          <Text style={styles.loadingText}>Loading assessment categories...</Text>
+          <LoadingSpinner size="large" text="Loading assessment categories..." />
         </View>
       </SafeAreaView>
     );
@@ -455,52 +384,38 @@ const InfraScreen = ({ navigation, route }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0F172A" />
+      <StatusBar barStyle="light-content" backgroundColor={COLORS.primary[600]} />
 
-      {/* Header */}
+      <ModernHeader
+        title="Infrastructure Assessment"
+        subtitle={subsections.length > 0 ? subsections[0].section.name : 'Assessment'}
+        onBackPress={() => navigation.goBack()}
+        gradient={COLORS.gradients.primary}
+      />
+
       <Animated.View
         style={[
-          styles.header,
-          {
-            opacity: fadeAnim,
-          },
+          styles.content,
+          { opacity: fadeAnim },
         ]}
       >
-        <LinearGradient
-          colors={['#0F172A', '#1E293B', '#334155']}
-          style={styles.headerGradient}
-        >
-          <View style={styles.headerContent}>
-            <TouchableOpacity
-              onPress={() => navigation.goBack()}
-              style={styles.backButton}
-              activeOpacity={0.8}
-            >
-              <ArrowLeft color="#fff" size={24} strokeWidth={2} />
-            </TouchableOpacity>
-            <View style={styles.headerTextContainer}>
-              <Text style={styles.headerTitle}>Infrastructure Assessment</Text>
-              <Text style={styles.headerSubtitle}>
-                {subsections.length > 0 ? subsections[0].section.name : 'Loading...'}
-              </Text>
-            </View>
-            <View style={styles.headerSpacer} />
-          </View>
-        </LinearGradient>
-      </Animated.View>
-
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        <View style={styles.content}>
-          <Text style={styles.sectionTitle}>Assessment Categories</Text>
-          <Text style={styles.sectionDescription}>
+        <View style={styles.introSection}>
+          <Text style={styles.introTitle}>Assessment Categories</Text>
+          <Text style={styles.introDescription}>
             Assess your infrastructure by uploading photos and selecting appropriate scores. Each category is scored from 1-3 based on best practices.
           </Text>
+        </View>
 
+        <ScrollView 
+          style={styles.scrollView} 
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
           {subsections.map((subsection, index) => (
             <CategoryCard key={subsection.id} subsection={subsection} index={index} />
           ))}
-        </View>
-      </ScrollView>
+        </ScrollView>
+      </Animated.View>
     </SafeAreaView>
   );
 };
@@ -508,98 +423,55 @@ const InfraScreen = ({ navigation, route }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: COLORS.background,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F8FAFC',
   },
-  loadingText: {
-    fontSize: 16,
-    color: '#64748B',
-    marginTop: 16,
-    fontWeight: '500',
-  },
-  header: {
-    marginBottom: 20,
-  },
-  headerGradient: {
-    paddingTop: Platform.OS === 'ios' ? 20 : 0,
-  },
-  headerContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 20,
-  },
-  backButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  headerTextContainer: {
+  content: {
     flex: 1,
-    alignItems: 'center',
   },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#fff',
+  introSection: {
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING['2xl'],
+    backgroundColor: COLORS.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.neutral[200],
   },
-  headerSubtitle: {
-    fontSize: 14,
-    color: '#94A3B8',
-    marginTop: 2,
+  introTitle: {
+    fontSize: TYPOGRAPHY.fontSize.xl,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: COLORS.text.primary,
+    marginBottom: SPACING.sm,
   },
-  headerSpacer: {
-    width: 48,
+  introDescription: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    color: COLORS.text.secondary,
+    lineHeight: TYPOGRAPHY.lineHeight.relaxed * TYPOGRAPHY.fontSize.base,
   },
   scrollView: {
     flex: 1,
   },
-  content: {
-    paddingHorizontal: 20,
-    paddingBottom: 30,
-  },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1E293B',
-    marginBottom: 8,
-  },
-  sectionDescription: {
-    fontSize: 16,
-    color: '#64748B',
-    marginBottom: 24,
-    lineHeight: 22,
+  scrollContent: {
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.xl,
+    paddingBottom: SPACING['4xl'],
   },
   categoryCard: {
-    marginBottom: 16,
-    borderRadius: 16,
+    marginBottom: SPACING.lg,
     overflow: 'hidden',
-    backgroundColor: '#fff',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
   },
   categoryHeader: {
-    overflow: 'hidden',
-  },
-  categoryHeaderGradient: {
     padding: 0,
   },
   categoryHeaderContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.lg,
   },
   categoryLeft: {
     flexDirection: 'row',
@@ -607,148 +479,115 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   categoryIcon: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 10,
-    padding: 8,
-    marginRight: 12,
+    backgroundColor: COLORS.primary[50],
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.md,
+    marginRight: SPACING.md,
   },
   categoryInfo: {
     flex: 1,
   },
   categoryTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#fff',
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.semibold,
+    color: COLORS.text.primary,
+    marginBottom: SPACING.xs,
+  },
+  categoryScore: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
   },
   categoryRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  scoreIndicator: {
-    borderRadius: 12,
-    padding: 6,
-    marginRight: 8,
-  },
-  chevronIcon: {
-    padding: 4,
+    padding: SPACING.xs,
   },
   categoryContent: {
-    padding: 20,
-    backgroundColor: '#fff',
+    paddingHorizontal: SPACING.xl,
+    paddingBottom: SPACING.xl,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.neutral[200],
   },
   categoryDescription: {
-    fontSize: 14,
-    color: '#64748B',
-    lineHeight: 20,
-    marginBottom: 16,
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.text.secondary,
+    lineHeight: TYPOGRAPHY.lineHeight.normal * TYPOGRAPHY.fontSize.sm,
+    marginBottom: SPACING.lg,
   },
   uploadSection: {
-    alignItems: 'center',
+    gap: SPACING.lg,
   },
   uploadButton: {
     width: '100%',
-    borderRadius: 12,
-    overflow: 'hidden',
-    marginBottom: 16,
-  },
-  uploadGradient: {
-    paddingVertical: 24,
-    paddingHorizontal: 20,
-    alignItems: 'center',
-  },
-  uploadText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginTop: 8,
-  },
-  uploadSubtext: {
-    fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.8)',
-    marginTop: 4,
   },
   imageContainer: {
-    width: '100%',
-    marginBottom: 16,
     position: 'relative',
+    borderRadius: BORDER_RADIUS.lg,
+    overflow: 'hidden',
   },
   uploadedImage: {
     width: '100%',
     height: 200,
-    borderRadius: 12,
-  },
-  imageOverlay: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
+    borderRadius: BORDER_RADIUS.lg,
   },
   retakeButton: {
+    position: 'absolute',
+    top: SPACING.md,
+    right: SPACING.md,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    borderRadius: BORDER_RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
     flexDirection: 'row',
     alignItems: 'center',
+    gap: SPACING.xs,
   },
   retakeText: {
-    color: '#fff',
-    fontSize: 12,
-    marginLeft: 4,
-    fontWeight: '500',
+    color: COLORS.text.inverse,
+    fontSize: TYPOGRAPHY.fontSize.xs,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
   },
   scoreSelector: {
-    width: '100%',
-    marginTop: 16,
+    gap: SPACING.md,
   },
   scoreSelectorTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1E293B',
-    marginBottom: 12,
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.semibold,
+    color: COLORS.text.primary,
   },
   scoreOption: {
     borderWidth: 2,
-    borderColor: '#E2E8F0',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    backgroundColor: '#fff',
+    borderColor: COLORS.neutral[200],
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.lg,
+    backgroundColor: COLORS.surface,
   },
-  scoreOptionHeader: {
+  scoreOptionContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
   },
   scoreOptionIcon: {
-    borderRadius: 8,
-    padding: 8,
-    marginRight: 12,
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.sm,
+    marginRight: SPACING.md,
   },
   scoreOptionInfo: {
     flex: 1,
   },
   scoreOptionText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1E293B',
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.semibold,
+    color: COLORS.text.primary,
   },
   scoreOptionValue: {
-    fontSize: 12,
-    color: '#64748B',
-    marginTop: 2,
-  },
-  scoreOptionDescription: {
-    fontSize: 13,
-    color: '#64748B',
-    lineHeight: 18,
-    marginLeft: 52,
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.text.secondary,
+    marginTop: SPACING.xs,
   },
   radioButton: {
     width: 20,
     height: 20,
     borderRadius: 10,
     borderWidth: 2,
-    borderColor: '#CBD5E1',
+    borderColor: COLORS.neutral[300],
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -756,28 +595,10 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.text.inverse,
   },
   submitButton: {
-    borderRadius: 12,
-    overflow: 'hidden',
-    marginTop: 8,
-  },
-  submitButtonDisabled: {
-    opacity: 0.6,
-  },
-  submitGradient: {
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  submitButtonText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginLeft: 8,
+    marginTop: SPACING.md,
   },
 });
 

@@ -3,7 +3,6 @@ import {
   View,
   Text,
   TextInput,
-  Image,
   TouchableOpacity,
   StyleSheet,
   Animated,
@@ -11,7 +10,6 @@ import {
   StatusBar,
   ScrollView,
   Dimensions,
-  Easing,
   SafeAreaView,
   PermissionsAndroid,
   Platform,
@@ -20,31 +18,32 @@ import DatePicker from 'react-native-date-picker';
 import { Dropdown } from 'react-native-element-dropdown';
 import { loginUser, registerUser, getUsersList } from '../api';
 import Geolocation from 'react-native-geolocation-service';
-import { Eye, EyeOff, User, Phone, Lock, Calendar, Users, Milk } from 'lucide-react-native';
+import { Eye, EyeOff, User, Phone, Lock, Calendar, Users, Milk, MapPin } from 'lucide-react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList, User as UserType } from '../types/navigation';
+import { COLORS, SPACING, TYPOGRAPHY, BORDER_RADIUS, SHADOWS, ANIMATIONS } from '../styles/globalStyles';
+import AnimatedButton from '../components/common/AnimatedButton';
+import AnimatedCard from '../components/common/AnimatedCard';
+import LoadingSpinner from '../components/common/LoadingSpinner';
 
 type LoginScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Login'>;
 
 const { width, height } = Dimensions.get('window');
 
 const LoginScreen: React.FC<{ navigation: LoginScreenNavigationProp }> = ({ navigation }) => {
-  const [currentScreen, setCurrentScreen] = useState('login'); // 'login', 'signup'
+  const [currentScreen, setCurrentScreen] = useState('login');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const [date, setDate] = useState(new Date());
   const [open, setOpen] = useState(false);
   const [isGenderFocus, setIsGenderFocus] = useState(false);
 
-  // Animation values - Initialize properly
-  const fadeAnim = useRef(new Animated.Value(1)).current;
-  const slideAnim = useRef(new Animated.Value(0)).current;
-  const logoRotateAnim = useRef(new Animated.Value(0)).current;
-  const logoScaleAnim = useRef(new Animated.Value(1)).current;
-  const cardScaleAnim = useRef(new Animated.Value(1)).current;
-  const buttonScaleAnim = useRef(new Animated.Value(1)).current;
-  const shakeAnimation = useRef(new Animated.Value(0)).current;
+  // Animation values
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
+  const logoAnim = useRef(new Animated.Value(0)).current;
 
   const genderData = [
     { label: 'Male', value: 'male' },
@@ -69,42 +68,48 @@ const LoginScreen: React.FC<{ navigation: LoginScreenNavigationProp }> = ({ navi
   });
 
   useEffect(() => {
-    // Logo rotation animation
-    const rotateAnimation = Animated.loop(
-      Animated.timing(logoRotateAnim, {
+    // Entrance animations
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 8000,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      })
-    );
-    rotateAnimation.start();
-
-    return () => rotateAnimation.stop();
-  }, []);
-
-  const handleScreenTransition = (screen: string) => {
-    // Simple transition without complex animations
-    setCurrentScreen(screen);
-    
-    // Reset animation values to ensure proper display
-    fadeAnim.setValue(1);
-    slideAnim.setValue(0);
-  };
-
-  const handleButtonPress = () => {
-    Animated.sequence([
-      Animated.timing(buttonScaleAnim, {
-        toValue: 0.95,
-        duration: 100,
+        duration: ANIMATIONS.timing.slow,
         useNativeDriver: true,
       }),
-      Animated.timing(buttonScaleAnim, {
-        toValue: 1,
-        duration: 100,
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: ANIMATIONS.timing.slow,
         useNativeDriver: true,
       }),
     ]).start();
+
+    // Logo animation
+    const logoAnimation = Animated.loop(
+      Animated.timing(logoAnim, {
+        toValue: 1,
+        duration: 3000,
+        useNativeDriver: true,
+      })
+    );
+    logoAnimation.start();
+
+    return () => logoAnimation.stop();
+  }, []);
+
+  const handleScreenTransition = (screen: string) => {
+    Animated.sequence([
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: ANIMATIONS.timing.fast,
+        useNativeDriver: true,
+      }),
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: ANIMATIONS.timing.fast,
+        useNativeDriver: true,
+      }),
+    ]).start();
+    
+    setCurrentScreen(screen);
   };
 
   const handleInputChange = (field: keyof typeof formData, value: string | number | null) => {
@@ -134,6 +139,7 @@ const LoginScreen: React.FC<{ navigation: LoginScreenNavigationProp }> = ({ navi
       }
     }
 
+    setLoading(true);
     Geolocation.getCurrentPosition(
       (position) => {
         setFormData(prev => ({
@@ -141,10 +147,12 @@ const LoginScreen: React.FC<{ navigation: LoginScreenNavigationProp }> = ({ navi
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
         }));
-        Alert.alert('Success', 'Location fetched successfully!');
+        Alert.alert('Success', 'Location captured successfully!');
+        setLoading(false);
       },
       (error) => {
         Alert.alert('Error', error.message);
+        setLoading(false);
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 },
     );
@@ -176,7 +184,7 @@ const LoginScreen: React.FC<{ navigation: LoginScreenNavigationProp }> = ({ navi
       return;
     }
     if (!latitude || !longitude) {
-      Alert.alert('Error', 'Please fetch your location before signing up.');
+      Alert.alert('Error', 'Please capture your location before signing up.');
       return;
     }
 
@@ -196,6 +204,7 @@ const LoginScreen: React.FC<{ navigation: LoginScreenNavigationProp }> = ({ navi
       longitude,
     };
 
+    setLoading(true);
     try {
       await registerUser(payload);
       Alert.alert('Success', 'Account created successfully! Please log in.');
@@ -203,6 +212,8 @@ const LoginScreen: React.FC<{ navigation: LoginScreenNavigationProp }> = ({ navi
     } catch (error) {
       console.error('Registration failed:', error);
       Alert.alert('Registration Failed', 'An error occurred during registration. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -211,40 +222,31 @@ const LoginScreen: React.FC<{ navigation: LoginScreenNavigationProp }> = ({ navi
       Alert.alert('Error', 'Please fill in all fields');
       return;
     }
+
+    setLoading(true);
     try {
-      // Step 1: Authenticate the user. We don't need the response since it's just a success message.
       await loginUser({ contactNumber: `+91${formData.phone}`, password: formData.password });
 
-      // Step 2: Fetch the full list of users to find the details of the logged-in user.
       const usersResponse = await getUsersList();
       const allUsers = usersResponse.data;
-
-      // Step 3: Find the user by the contact number they used to log in.
-            const loggedInUser = allUsers.find((user: UserType) => user.contactNumber === `+91${formData.phone}`);
+      const loggedInUser = allUsers.find((user: UserType) => user.contactNumber === `+91${formData.phone}`);
 
       if (loggedInUser && loggedInUser.userId) {
-        Alert.alert('Success', 'Logged in successfully!');
-        // Navigate to the next screen with the found userId.
+        Alert.alert('Success', 'Welcome back!');
         navigation.navigate('HomeScreen', { userId: loggedInUser.userId });
       } else {
-        // This error means login was successful, but we couldn't find the user's details in the list.
         console.error('Login Error: Could not find user details after successful authentication.');
         Alert.alert('Login Error', 'Could not retrieve user details after login. Please try again.');
       }
     } catch (error) {
       console.error(error);
       Alert.alert('Login Failed', 'Invalid credentials or network error. Please try again.');
-      // Optional: Add shake animation for failed login attempt
-      Animated.sequence([
-        Animated.timing(shakeAnimation, { toValue: 10, duration: 100, useNativeDriver: true }),
-        Animated.timing(shakeAnimation, { toValue: -10, duration: 100, useNativeDriver: true }),
-        Animated.timing(shakeAnimation, { toValue: 10, duration: 100, useNativeDriver: true }),
-        Animated.timing(shakeAnimation, { toValue: 0, duration: 100, useNativeDriver: true })
-      ]).start();
+    } finally {
+      setLoading(false);
     }
   };
 
-  const logoRotate = logoRotateAnim.interpolate({
+  const logoRotate = logoAnim.interpolate({
     inputRange: [0, 1],
     outputRange: ['0deg', '360deg'],
   });
@@ -254,18 +256,48 @@ const LoginScreen: React.FC<{ navigation: LoginScreenNavigationProp }> = ({ navi
       style={[
         styles.logoContainer,
         {
-          transform: [
-            { scale: logoScaleAnim },
-            { rotate: logoRotate },
-          ],
+          transform: [{ rotate: logoRotate }],
         },
       ]}
     >
       <View style={styles.logoInner}>
-        <Milk color="#fff" size={48} />
+        <Milk color={COLORS.text.inverse} size={32} strokeWidth={2} />
       </View>
-      <View style={styles.logoRing} />
     </Animated.View>
+  );
+
+  const InputField = ({ 
+    icon: Icon, 
+    placeholder, 
+    value, 
+    onChangeText, 
+    secureTextEntry = false,
+    keyboardType = 'default',
+    rightIcon,
+    onRightIconPress,
+    style,
+    ...props 
+  }) => (
+    <View style={[styles.inputContainer, style]}>
+      <View style={styles.inputIconContainer}>
+        <Icon color={COLORS.primary[500]} size={20} strokeWidth={2} />
+      </View>
+      <TextInput
+        placeholder={placeholder}
+        value={value}
+        onChangeText={onChangeText}
+        secureTextEntry={secureTextEntry}
+        keyboardType={keyboardType}
+        style={styles.input}
+        placeholderTextColor={COLORS.text.tertiary}
+        {...props}
+      />
+      {rightIcon && (
+        <TouchableOpacity onPress={onRightIconPress} style={styles.rightIcon}>
+          {rightIcon}
+        </TouchableOpacity>
+      )}
+    </View>
   );
 
   const renderLoginScreen = () => (
@@ -278,304 +310,224 @@ const LoginScreen: React.FC<{ navigation: LoginScreenNavigationProp }> = ({ navi
         },
       ]}
     >
-      <Animated.View
-        style={[
-          styles.card,
-          {
-            transform: [{ scale: cardScaleAnim }],
-          },
-        ]}
-      >
+      <AnimatedCard style={styles.card} animationType="fadeInUp">
         <View style={styles.header}>
           <AnimatedLogo />
           <Text style={styles.title}>Welcome Back!</Text>
-          <Text style={styles.subtitle}>Sign in to continue your journey</Text>
+          <Text style={styles.subtitle}>Sign in to manage your dairy operations</Text>
         </View>
 
         <View style={styles.form}>
-          <View style={styles.inputContainer}>
-            <View style={styles.inputIconContainer}>
-              <Phone color="#6366f1" size={20} />
-            </View>
-            <Text style={styles.countryCodeInput}>+91</Text>
-            <TextInput
-              placeholder="Phone Number"
-              value={formData.phone}
-              onChangeText={(text) => handleInputChange('phone', text)}
-              style={[styles.input, styles.phoneInput]}
-              keyboardType="phone-pad"
-              placeholderTextColor="#9ca3af"
-            />
-          </View>
+          <InputField
+            icon={Phone}
+            placeholder="Phone Number"
+            value={formData.phone}
+            onChangeText={(text) => handleInputChange('phone', text)}
+            keyboardType="phone-pad"
+          />
 
-          <View style={styles.inputContainer}>
-            <View style={styles.inputIconContainer}>
-              <Lock color="#6366f1" size={20} />
-            </View>
-            <TextInput
-              secureTextEntry={!showPassword}
-              placeholder="Password"
-              value={formData.password}
-              onChangeText={(text) => handleInputChange('password', text)}
-              style={styles.input}
-              placeholderTextColor="#9ca3af"
-            />
-            <TouchableOpacity
-              onPress={() => setShowPassword(!showPassword)}
-              style={styles.eyeIcon}
-            >
-              {showPassword ? <EyeOff color="#9ca3af" size={20} /> : <Eye color="#9ca3af" size={20} />}
-            </TouchableOpacity>
-          </View>
+          <InputField
+            icon={Lock}
+            placeholder="Password"
+            value={formData.password}
+            onChangeText={(text) => handleInputChange('password', text)}
+            secureTextEntry={!showPassword}
+            rightIcon={
+              showPassword ? 
+                <EyeOff color={COLORS.text.tertiary} size={20} strokeWidth={2} /> : 
+                <Eye color={COLORS.text.tertiary} size={20} strokeWidth={2} />
+            }
+            onRightIconPress={() => setShowPassword(!showPassword)}
+          />
 
-          <Animated.View style={{ transform: [{ scale: buttonScaleAnim }] }}>
-            <TouchableOpacity
-              onPress={() => {
-                handleButtonPress();
-                handleLogin();
-              }}
-              style={styles.loginButton}
-            >
-              <Text style={styles.buttonText}>Sign In</Text>
-            </TouchableOpacity>
-          </Animated.View>
+          <AnimatedButton
+            title={loading ? "Signing In..." : "Sign In"}
+            onPress={handleLogin}
+            disabled={loading}
+            style={styles.loginButton}
+          />
 
-          <View style={styles.footer}>
-            <TouchableOpacity onPress={() => handleScreenTransition('signup')}>
-              <Text style={styles.footerText}>
-                Don't have an account?{' '}
-                <Text style={styles.linkText}>Sign Up</Text>
-              </Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity onPress={() => handleScreenTransition('signup')}>
+            <Text style={styles.footerText}>
+              Don't have an account?{' '}
+              <Text style={styles.linkText}>Sign Up</Text>
+            </Text>
+          </TouchableOpacity>
         </View>
-      </Animated.View>
+      </AnimatedCard>
     </Animated.View>
   );
 
   const renderSignUpScreen = () => (
-    <View style={styles.signupScreenContainer}>
-      <ScrollView
-        contentContainerStyle={styles.scrollContainer}
-        style={styles.scrollView}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
+    <ScrollView
+      contentContainerStyle={styles.scrollContainer}
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+    >
+      <Animated.View
+        style={[
+          styles.screenContainer,
+          {
+            opacity: fadeAnim,
+            transform: [{ translateY: slideAnim }],
+          },
+        ]}
       >
-        <View style={styles.card}>
+        <AnimatedCard style={styles.card} animationType="fadeInUp">
           <View style={styles.header}>
             <AnimatedLogo />
             <Text style={styles.title}>Create Account</Text>
-            <Text style={styles.subtitle}>Join our milk management family</Text>
+            <Text style={styles.subtitle}>Join our dairy management community</Text>
           </View>
 
           <View style={styles.form}>
-            <View style={styles.inputContainer}>
-              <View style={styles.inputIconContainer}>
-                <User color="#10b981" size={20} />
-              </View>
-              <TextInput
-                placeholder="First Name"
-                value={formData.firstName}
-                onChangeText={(text) => handleInputChange('firstName', text)}
-                style={styles.input}
-                placeholderTextColor="#9ca3af"
-              />
-            </View>
+            <InputField
+              icon={User}
+              placeholder="First Name"
+              value={formData.firstName}
+              onChangeText={(text) => handleInputChange('firstName', text)}
+            />
+
+            <InputField
+              icon={User}
+              placeholder="Surname"
+              value={formData.surname}
+              onChangeText={(text) => handleInputChange('surname', text)}
+            />
 
             <View style={styles.inputContainer}>
               <View style={styles.inputIconContainer}>
-                <User color="#10b981" size={20} />
+                <Users color={COLORS.primary[500]} size={20} strokeWidth={2} />
               </View>
-              <TextInput
-                placeholder="Surname"
-                value={formData.surname}
-                onChangeText={(text) => handleInputChange('surname', text)}
-                style={styles.input}
-                placeholderTextColor="#9ca3af"
+              <Dropdown
+                style={styles.dropdown}
+                placeholderStyle={styles.dropdownPlaceholder}
+                selectedTextStyle={styles.dropdownSelected}
+                data={genderData}
+                maxHeight={300}
+                labelField="label"
+                valueField="value"
+                placeholder="Select gender"
+                value={formData.gender}
+                onFocus={() => setIsGenderFocus(true)}
+                onBlur={() => setIsGenderFocus(false)}
+                onChange={item => {
+                  handleInputChange('gender', item.value);
+                  setIsGenderFocus(false);
+                }}
               />
-            </View>
-
-            <View style={styles.inputContainer}>
-              <View style={styles.inputIconContainer}>
-                <Users color="#10b981" size={20} />
-              </View>
-              <View style={styles.dropdownWrapper}>
-                <Dropdown
-                  style={styles.dropdown}
-                  placeholderStyle={styles.dropdownPlaceholder}
-                  selectedTextStyle={styles.dropdownSelected}
-                  inputSearchStyle={styles.inputSearchStyle}
-                  iconStyle={styles.iconStyle}
-                  data={genderData}
-                  maxHeight={300}
-                  labelField="label"
-                  valueField="value"
-                  placeholder={!isGenderFocus ? 'Select gender' : '...'}
-                  value={formData.gender}
-                  onFocus={() => setIsGenderFocus(true)}
-                  onBlur={() => setIsGenderFocus(false)}
-                  onChange={item => {
-                    handleInputChange('gender', item.value);
-                    setIsGenderFocus(false);
-                  }}
-                />
-              </View>
             </View>
 
             <TouchableOpacity onPress={() => setOpen(true)}>
               <View style={styles.inputContainer}>
                 <View style={styles.inputIconContainer}>
-                  <Calendar color="#10b981" size={20} />
+                  <Calendar color={COLORS.primary[500]} size={20} strokeWidth={2} />
                 </View>
                 <View style={styles.dateInputWrapper}>
-                  <Text style={[styles.dateInputText, {color: formData.dob ? '#111827' : '#9ca3af'}]}>
+                  <Text style={[styles.dateInputText, {color: formData.dob ? COLORS.text.primary : COLORS.text.tertiary}]}>
                     {formData.dob || 'Date of Birth'}
                   </Text>
                 </View>
               </View>
             </TouchableOpacity>
 
-            <View style={styles.inputContainer}>
-              <View style={styles.inputIconContainer}>
-                <Phone color="#10b981" size={20} />
-              </View>
-              <Text style={styles.countryCodeInput}>+91</Text>
-              <TextInput
-                placeholder="Phone Number"
-                value={formData.phone}
-                onChangeText={(text) => handleInputChange('phone', text)}
-                style={[styles.input, styles.phoneInput]}
-                keyboardType="phone-pad"
-                placeholderTextColor="#9ca3af"
-              />
-            </View>
+            <InputField
+              icon={Phone}
+              placeholder="Phone Number"
+              value={formData.phone}
+              onChangeText={(text) => handleInputChange('phone', text)}
+              keyboardType="phone-pad"
+            />
 
-            <View style={styles.inputContainer}>
-              <View style={styles.inputIconContainer}>
-                <Lock color="#10b981" size={20} />
-              </View>
-              <TextInput
-                secureTextEntry={!showPassword}
-                placeholder="Password"
-                value={formData.password}
-                onChangeText={(text) => handleInputChange('password', text)}
-                style={styles.input}
-                placeholderTextColor="#9ca3af"
-              />
-              <TouchableOpacity
-                onPress={() => setShowPassword(!showPassword)}
-                style={styles.eyeIcon}
-              >
-                {showPassword ? <EyeOff color="#9ca3af" size={20} /> : <Eye color="#9ca3af" size={20} />}
-              </TouchableOpacity>
-            </View>
+            <InputField
+              icon={Lock}
+              placeholder="Password"
+              value={formData.password}
+              onChangeText={(text) => handleInputChange('password', text)}
+              secureTextEntry={!showPassword}
+              rightIcon={
+                showPassword ? 
+                  <EyeOff color={COLORS.text.tertiary} size={20} strokeWidth={2} /> : 
+                  <Eye color={COLORS.text.tertiary} size={20} strokeWidth={2} />
+              }
+              onRightIconPress={() => setShowPassword(!showPassword)}
+            />
 
-            <View style={styles.inputContainer}>
-              <View style={styles.inputIconContainer}>
-                <Lock color="#10b981" size={20} />
-              </View>
-              <TextInput
-                secureTextEntry={!showConfirmPassword}
-                placeholder="Confirm Password"
-                value={formData.confirmPassword}
-                onChangeText={(text) => handleInputChange('confirmPassword', text)}
-                style={styles.input}
-                placeholderTextColor="#9ca3af"
-              />
-              <TouchableOpacity
-                onPress={() => setShowConfirmPassword(!showConfirmPassword)}
-                style={styles.eyeIcon}
-              >
-                {showConfirmPassword ? <EyeOff color="#9ca3af" size={20} /> : <Eye color="#9ca3af" size={20} />}
-              </TouchableOpacity>
-            </View>
+            <InputField
+              icon={Lock}
+              placeholder="Confirm Password"
+              value={formData.confirmPassword}
+              onChangeText={(text) => handleInputChange('confirmPassword', text)}
+              secureTextEntry={!showConfirmPassword}
+              rightIcon={
+                showConfirmPassword ? 
+                  <EyeOff color={COLORS.text.tertiary} size={20} strokeWidth={2} /> : 
+                  <Eye color={COLORS.text.tertiary} size={20} strokeWidth={2} />
+              }
+              onRightIconPress={() => setShowConfirmPassword(!showConfirmPassword)}
+            />
 
-            <View style={styles.inputContainer}>
-              <View style={styles.inputIconContainer}>
-                <User color="#10b981" size={20} />
-              </View>
-              <TextInput
-                placeholder="State"
-                value={formData.state}
-                onChangeText={(text) => handleInputChange('state', text)}
-                style={styles.input}
-                placeholderTextColor="#9ca3af"
-              />
-            </View>
+            <InputField
+              icon={MapPin}
+              placeholder="State"
+              value={formData.state}
+              onChangeText={(text) => handleInputChange('state', text)}
+            />
 
-            <View style={styles.inputContainer}>
-              <View style={styles.inputIconContainer}>
-                <User color="#10b981" size={20} />
-              </View>
-              <TextInput
-                placeholder="District"
-                value={formData.district}
-                onChangeText={(text) => handleInputChange('district', text)}
-                style={styles.input}
-                placeholderTextColor="#9ca3af"
-              />
-            </View>
+            <InputField
+              icon={MapPin}
+              placeholder="District"
+              value={formData.district}
+              onChangeText={(text) => handleInputChange('district', text)}
+            />
 
-            <View style={styles.inputContainer}>
-              <View style={styles.inputIconContainer}>
-                <User color="#10b981" size={20} />
-              </View>
-              <TextInput
-                placeholder="Block"
-                value={formData.block}
-                onChangeText={(text) => handleInputChange('block', text)}
-                style={styles.input}
-                placeholderTextColor="#9ca3af"
-              />
-            </View>
+            <InputField
+              icon={MapPin}
+              placeholder="Block"
+              value={formData.block}
+              onChangeText={(text) => handleInputChange('block', text)}
+            />
 
-            <View style={styles.inputContainer}>
-              <View style={styles.inputIconContainer}>
-                <User color="#10b981" size={20} />
-              </View>
-              <TextInput
-                placeholder="Village"
-                value={formData.village}
-                onChangeText={(text) => handleInputChange('village', text)}
-                style={styles.input}
-                placeholderTextColor="#9ca3af"
-              />
-            </View>
+            <InputField
+              icon={MapPin}
+              placeholder="Village"
+              value={formData.village}
+              onChangeText={(text) => handleInputChange('village', text)}
+            />
 
             <View style={styles.locationContainer}>
-              <TouchableOpacity onPress={handleGetLocation} style={styles.locationButton}>
-                <Text style={styles.buttonText}>Get Location</Text>
-              </TouchableOpacity>
+              <AnimatedButton
+                title={loading ? "Getting Location..." : "Capture Location"}
+                onPress={handleGetLocation}
+                variant="warning"
+                icon={MapPin}
+                disabled={loading}
+                style={styles.locationButton}
+              />
               {formData.latitude && formData.longitude && (
                 <Text style={styles.locationText}>
-                  Location Captured: Lat: {formData.latitude.toFixed(4)}, Lon: {formData.longitude.toFixed(4)}
+                  ✅ Location captured successfully
                 </Text>
               )}
             </View>
 
-            <Animated.View style={{ transform: [{ scale: buttonScaleAnim }] }}>
-              <TouchableOpacity
-                onPress={() => {
-                  handleButtonPress();
-                  handleSignUp();
-                }}
-                style={styles.signupButton}
-              >
-                <Text style={styles.buttonText}>Create Account</Text>
-              </TouchableOpacity>
-            </Animated.View>
+            <AnimatedButton
+              title={loading ? "Creating Account..." : "Create Account"}
+              onPress={handleSignUp}
+              variant="success"
+              disabled={loading}
+              style={styles.signupButton}
+            />
 
-            <View style={styles.footer}>
-              <TouchableOpacity onPress={() => handleScreenTransition('login')}>
-                <Text style={styles.footerText}>
-                  Already have an account?{' '}
-                  <Text style={styles.linkText}>Sign In</Text>
-                </Text>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity onPress={() => handleScreenTransition('login')}>
+              <Text style={styles.footerText}>
+                Already have an account?{' '}
+                <Text style={styles.linkText}>Sign In</Text>
+              </Text>
+            </TouchableOpacity>
           </View>
-        </View>
-      </ScrollView>
+        </AnimatedCard>
+      </Animated.View>
 
       <DatePicker
         modal
@@ -591,15 +543,24 @@ const LoginScreen: React.FC<{ navigation: LoginScreenNavigationProp }> = ({ navi
           setOpen(false);
         }}
       />
-    </View>
+    </ScrollView>
   );
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#6366f1" />
+      <StatusBar barStyle="light-content" backgroundColor={COLORS.primary[600]} />
+      
       <View style={styles.headerContainer}>
-        <Text style={styles.mainHeading}>Milk Management System</Text>
+        <Text style={styles.mainHeading}>Smart Dairy Management</Text>
+        <Text style={styles.mainSubheading}>Empowering dairy farmers with technology</Text>
       </View>
+
+      {loading && (
+        <View style={styles.loadingOverlay}>
+          <LoadingSpinner size="large" text="Please wait..." />
+        </View>
+      )}
+
       {currentScreen === 'login' && renderLoginScreen()}
       {currentScreen === 'signup' && renderSignUpScreen()}
     </SafeAreaView>
@@ -609,112 +570,75 @@ const LoginScreen: React.FC<{ navigation: LoginScreenNavigationProp }> = ({ navi
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: COLORS.background,
   },
   headerContainer: {
-    backgroundColor: '#6366f1',
-    paddingVertical: 20,
-    shadowColor: '#6366f1',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 8,
+    backgroundColor: COLORS.primary[600],
+    paddingVertical: SPACING['2xl'],
+    paddingHorizontal: SPACING.xl,
+    alignItems: 'center',
+    ...SHADOWS.lg,
   },
   mainHeading: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#ffffff',
+    fontSize: TYPOGRAPHY.fontSize['3xl'],
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: COLORS.text.inverse,
     textAlign: 'center',
-    letterSpacing: 0.5,
+    marginBottom: SPACING.xs,
+  },
+  mainSubheading: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: 'rgba(255, 255, 255, 0.9)',
+    textAlign: 'center',
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
   },
   screenContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
-  },
-  signupScreenContainer: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
-  },
-  scrollView: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
+    padding: SPACING.xl,
   },
   scrollContainer: {
     flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
-    paddingBottom: 40,
+    padding: SPACING.xl,
+    paddingBottom: SPACING['4xl'],
   },
   card: {
     width: '100%',
     maxWidth: 400,
-    backgroundColor: '#ffffff',
-    borderRadius: 24,
-    padding: 32,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 20,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 25,
-    elevation: 20,
   },
   header: {
     alignItems: 'center',
-    marginBottom: 32,
+    marginBottom: SPACING['3xl'],
   },
   logoContainer: {
-    width: 100,
-    height: 100,
-    marginBottom: 24,
-    position: 'relative',
-  },
-  logoInner: {
     width: 80,
     height: 80,
-    borderRadius: 40,
-    backgroundColor: '#6366f1',
+    borderRadius: BORDER_RADIUS.full,
+    backgroundColor: COLORS.primary[500],
     justifyContent: 'center',
     alignItems: 'center',
-    position: 'absolute',
-    top: 10,
-    left: 10,
-    shadowColor: '#6366f1',
-    shadowOffset: {
-      width: 0,
-      height: 10,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 10,
+    marginBottom: SPACING.xl,
+    ...SHADOWS.lg,
   },
-  logoRing: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    borderWidth: 3,
-    borderColor: '#e0e7ff',
-    position: 'absolute',
+  logoInner: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   title: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#1f2937',
-    marginBottom: 8,
+    fontSize: TYPOGRAPHY.fontSize['2xl'],
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: COLORS.text.primary,
+    marginBottom: SPACING.sm,
     textAlign: 'center',
   },
   subtitle: {
-    fontSize: 16,
-    color: '#6b7280',
+    fontSize: TYPOGRAPHY.fontSize.base,
+    color: COLORS.text.secondary,
     textAlign: 'center',
-    lineHeight: 24,
+    lineHeight: TYPOGRAPHY.lineHeight.relaxed * TYPOGRAPHY.fontSize.base,
   },
   form: {
     width: '100%',
@@ -722,162 +646,108 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
-    position: 'relative',
-    backgroundColor: '#f8fafc',
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: '#e5e7eb',
+    marginBottom: SPACING.lg,
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.neutral[200],
     minHeight: 56,
+    ...SHADOWS.sm,
   },
   inputIconContainer: {
     width: 50,
     height: 56,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#ffffff',
-    borderTopLeftRadius: 14,
-    borderBottomLeftRadius: 14,
-    borderRightWidth: 2,
-    borderRightColor: '#e5e7eb',
+    backgroundColor: COLORS.neutral[50],
+    borderTopLeftRadius: BORDER_RADIUS.lg,
+    borderBottomLeftRadius: BORDER_RADIUS.lg,
+    borderRightWidth: 1,
+    borderRightColor: COLORS.neutral[200],
   },
   input: {
     flex: 1,
     height: 56,
-    paddingHorizontal: 16,
-    fontSize: 16,
-    color: '#1f2937',
-    backgroundColor: 'transparent',
+    paddingHorizontal: SPACING.lg,
+    fontSize: TYPOGRAPHY.fontSize.base,
+    color: COLORS.text.primary,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
   },
-  phoneInput: {
-    paddingLeft: 60,
-  },
-  countryCodeInput: {
+  rightIcon: {
     position: 'absolute',
-    left: 60,
-    fontSize: 16,
-    color: '#6b7280',
-    fontWeight: '600',
-    zIndex: 1,
-  },
-  dropdownWrapper: {
-    flex: 1,
-    height: 56,
-    justifyContent: 'center',
-  },
-  dropdown: {
-    flex: 1,
-    height: 56,
-    paddingHorizontal: 16,
-    backgroundColor: 'transparent',
-  },
-  dropdownPlaceholder: {
-    color: '#9ca3af',
-    fontSize: 16,
-  },
-  dropdownSelected: {
-    color: '#1f2937',
-    fontSize: 16,
-  },
-  dateInputWrapper: {
-    flex: 1,
-    height: 56,
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-  },
-  dateInputText: {
-    fontSize: 16,
-  },
-  eyeIcon: {
-    position: 'absolute',
-    right: 16,
+    right: SPACING.lg,
     width: 40,
     height: 40,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  loginButton: {
-    backgroundColor: '#6366f1',
-    paddingVertical: 18,
-    borderRadius: 16,
-    alignItems: 'center',
-    marginTop: 8,
-    shadowColor: '#6366f1',
-    shadowOffset: {
-      width: 0,
-      height: 10,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 10,
+  dropdown: {
+    flex: 1,
+    height: 56,
+    paddingHorizontal: SPACING.lg,
   },
-  signupButton: {
-    backgroundColor: '#10b981',
-    paddingVertical: 18,
-    borderRadius: 16,
-    alignItems: 'center',
-    marginTop: 8,
-    shadowColor: '#10b981',
-    shadowOffset: {
-      width: 0,
-      height: 10,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 10,
+  dropdownPlaceholder: {
+    color: COLORS.text.tertiary,
+    fontSize: TYPOGRAPHY.fontSize.base,
+  },
+  dropdownSelected: {
+    color: COLORS.text.primary,
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
+  },
+  dateInputWrapper: {
+    flex: 1,
+    height: 56,
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.lg,
+  },
+  dateInputText: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
   },
   locationContainer: {
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: SPACING.lg,
   },
   locationButton: {
-    backgroundColor: '#f59e0b',
-    paddingVertical: 18,
-    borderRadius: 16,
-    alignItems: 'center',
     width: '100%',
-    shadowColor: '#f59e0b',
-    shadowOffset: {
-      width: 0,
-      height: 10,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 10,
-    marginBottom: 10,
+    marginBottom: SPACING.md,
   },
   locationText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: '#4b5563',
-    fontWeight: '500',
-  },
-  buttonText: {
-    color: '#ffffff',
-    fontSize: 18,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  footer: {
-    marginTop: 32,
-    alignItems: 'center',
-  },
-  footerText: {
-    fontSize: 15,
-    color: '#6b7280',
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.success[600],
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
     textAlign: 'center',
   },
+  loginButton: {
+    marginTop: SPACING.md,
+    marginBottom: SPACING.xl,
+  },
+  signupButton: {
+    marginTop: SPACING.md,
+    marginBottom: SPACING.xl,
+  },
+  footerText: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    color: COLORS.text.secondary,
+    textAlign: 'center',
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
+  },
   linkText: {
-    color: '#6366f1',
-    fontWeight: '600',
+    color: COLORS.primary[600],
+    fontWeight: TYPOGRAPHY.fontWeight.semibold,
   },
-  iconStyle: {
-    width: 20,
-    height: 20,
-  },
-  inputSearchStyle: {
-    height: 40,
-    fontSize: 16,
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
   },
 });
+
 export default LoginScreen;

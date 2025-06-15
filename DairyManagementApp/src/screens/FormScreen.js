@@ -10,21 +10,22 @@ import {
   SafeAreaView,
   StatusBar,
   Animated,
-  Dimensions,
   Platform,
 } from 'react-native';
 import { ChevronLeft, Send, Zap, Shield } from 'lucide-react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { submitCowInfo, submitBuffaloInfo } from '../api';
-
-const { width } = Dimensions.get('window');
+import { COLORS, SPACING, TYPOGRAPHY, BORDER_RADIUS, SHADOWS, ANIMATIONS } from '../styles/globalStyles';
+import ModernHeader from '../components/common/ModernHeader';
+import AnimatedCard from '../components/common/AnimatedCard';
+import AnimatedButton from '../components/common/AnimatedButton';
+import LoadingSpinner from '../components/common/LoadingSpinner';
 
 const FormScreen = ({ route, navigation }) => {
   const userId = route.params?.userId;
   
   // Animation refs
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(30)).current;
   const progressAnim = useRef(new Animated.Value(0)).current;
 
   if (!userId) {
@@ -63,18 +64,11 @@ const FormScreen = ({ route, navigation }) => {
   const [progressPercentage, setProgressPercentage] = useState('0%');
 
   useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 600,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 500,
-        useNativeDriver: true,
-      }),
-    ]).start();
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: ANIMATIONS.timing.slow,
+      useNativeDriver: true,
+    }).start();
   }, []);
 
   useEffect(() => {
@@ -87,7 +81,7 @@ const FormScreen = ({ route, navigation }) => {
 
     Animated.timing(progressAnim, {
       toValue: progress,
-      duration: 300,
+      duration: ANIMATIONS.timing.normal,
       useNativeDriver: false,
     }).start();
   }, [cowData, buffaloData]);
@@ -114,20 +108,6 @@ const FormScreen = ({ route, navigation }) => {
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
-    
-    // Submit animation
-    Animated.sequence([
-      Animated.timing(fadeAnim, {
-        toValue: 0.5,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-    ]).start();
 
     const formatBreeds = (breeds) =>
       breeds.reduce((acc, breed) => {
@@ -168,14 +148,14 @@ const FormScreen = ({ route, navigation }) => {
     }
   };
 
-  const AnimatedInput = ({ label, value, onChangeText, keyboardType = 'numeric', icon }) => {
+  const AnimatedInput = ({ label, value, onChangeText, keyboardType = 'numeric' }) => {
     const inputAnim = useRef(new Animated.Value(0)).current;
     const isFocused = focusedInput === label;
 
     useEffect(() => {
       Animated.timing(inputAnim, {
         toValue: isFocused ? 1 : 0,
-        duration: 200,
+        duration: ANIMATIONS.timing.fast,
         useNativeDriver: false,
       }).start();
     }, [isFocused]);
@@ -187,7 +167,7 @@ const FormScreen = ({ route, navigation }) => {
           {
             borderColor: inputAnim.interpolate({
               inputRange: [0, 1],
-              outputRange: ['#E2E8F0', '#8B5CF6'],
+              outputRange: [COLORS.neutral[200], COLORS.primary[500]],
             }),
             shadowOpacity: inputAnim.interpolate({
               inputRange: [0, 1],
@@ -200,7 +180,7 @@ const FormScreen = ({ route, navigation }) => {
         <TextInput
           style={styles.input}
           placeholder={`Enter ${label.toLowerCase()}`}
-          placeholderTextColor="#94A3B8"
+          placeholderTextColor={COLORS.text.tertiary}
           value={value}
           onChangeText={onChangeText}
           keyboardType={keyboardType}
@@ -211,7 +191,7 @@ const FormScreen = ({ route, navigation }) => {
     );
   };
 
-  const BreedInput = ({ breed, value, onChangeText, type }) => (
+  const BreedInput = ({ breed, value, onChangeText }) => (
     <View style={styles.breedContainer}>
       <View style={styles.breedLabel}>
         <Text style={styles.breedName}>{breed}</Text>
@@ -219,7 +199,7 @@ const FormScreen = ({ route, navigation }) => {
       <TextInput
         style={styles.breedInput}
         placeholder="Count"
-        placeholderTextColor="#94A3B8"
+        placeholderTextColor={COLORS.text.tertiary}
         keyboardType="numeric"
         value={value}
         onChangeText={onChangeText}
@@ -236,14 +216,14 @@ const FormScreen = ({ route, navigation }) => {
     >
       {isActive && (
         <LinearGradient
-          colors={['#8B5CF6', '#7C3AED']}
+          colors={COLORS.gradients.primary}
           style={StyleSheet.absoluteFillObject}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
         />
       )}
       <Icon 
-        color={isActive ? '#fff' : '#64748B'} 
+        color={isActive ? COLORS.text.inverse : COLORS.text.secondary} 
         size={20} 
         strokeWidth={2}
       />
@@ -255,28 +235,14 @@ const FormScreen = ({ route, navigation }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
+      <StatusBar barStyle="light-content" backgroundColor={COLORS.primary[600]} />
       
-      {/* Header */}
-      <Animated.View
-        style={[
-          styles.header,
-          {
-            opacity: fadeAnim,
-            transform: [{ translateY: slideAnim }],
-          },
-        ]}
-      >
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.backButton}
-          activeOpacity={0.8}
-        >
-          <ChevronLeft color="#1E293B" size={28} strokeWidth={2} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Add Livestock Data</Text>
-        <View style={styles.headerRight} />
-      </Animated.View>
+      <ModernHeader
+        title="Add Livestock Data"
+        subtitle="Record your dairy animals"
+        onBackPress={() => navigation.goBack()}
+        gradient={COLORS.gradients.primary}
+      />
 
       {/* Progress Bar */}
       <Animated.View
@@ -285,7 +251,10 @@ const FormScreen = ({ route, navigation }) => {
           { opacity: fadeAnim },
         ]}
       >
-        <Text style={styles.progressText}>Form Progress</Text>
+        <View style={styles.progressHeader}>
+          <Text style={styles.progressText}>Form Progress</Text>
+          <Text style={styles.progressPercentage}>{progressPercentage}</Text>
+        </View>
         <View style={styles.progressBarContainer}>
           <Animated.View
             style={[
@@ -299,19 +268,13 @@ const FormScreen = ({ route, navigation }) => {
             ]}
           />
         </View>
-        <Text style={styles.progressPercentage}>
-          {progressPercentage}
-        </Text>
       </Animated.View>
 
       {/* Tab Switcher */}
       <Animated.View
         style={[
           styles.tabContainer,
-          {
-            opacity: fadeAnim,
-            transform: [{ translateY: slideAnim }],
-          },
+          { opacity: fadeAnim },
         ]}
       >
         <TabButton
@@ -333,19 +296,11 @@ const FormScreen = ({ route, navigation }) => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <Animated.View
-          style={[
-            styles.formCard,
-            {
-              opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }],
-            },
-          ]}
-        >
+        <AnimatedCard style={styles.formCard} animationType="fadeInUp">
           {activeTab === 'cow' ? (
             <View>
               <View style={styles.sectionHeader}>
-                <Zap color="#8B5CF6" size={24} strokeWidth={2} />
+                <Zap color={COLORS.primary[500]} size={24} strokeWidth={2} />
                 <Text style={styles.sectionTitle}>Cow Ownership Details</Text>
               </View>
               
@@ -381,7 +336,6 @@ const FormScreen = ({ route, navigation }) => {
                     breed={breed.name}
                     value={breed.count}
                     onChangeText={(value) => handleBreedChange('cow', index, value)}
-                    type="cow"
                   />
                 ))}
               </View>
@@ -389,7 +343,7 @@ const FormScreen = ({ route, navigation }) => {
           ) : (
             <View>
               <View style={styles.sectionHeader}>
-                <Shield color="#8B5CF6" size={24} strokeWidth={2} />
+                <Shield color={COLORS.primary[500]} size={24} strokeWidth={2} />
                 <Text style={styles.sectionTitle}>Buffalo Ownership Details</Text>
               </View>
               
@@ -425,42 +379,34 @@ const FormScreen = ({ route, navigation }) => {
                     breed={breed.name}
                     value={breed.count}
                     onChangeText={(value) => handleBreedChange('buffalo', index, value)}
-                    type="buffalo"
                   />
                 ))}
               </View>
             </View>
           )}
-        </Animated.View>
+        </AnimatedCard>
       </ScrollView>
 
       {/* Submit Button */}
       <Animated.View
         style={[
           styles.submitContainer,
-          {
-            opacity: fadeAnim,
-          },
+          { opacity: fadeAnim },
         ]}
       >
-        <TouchableOpacity
-          style={[styles.submitButton, isSubmitting && styles.submitButtonDisabled]}
-          onPress={handleSubmit}
-          disabled={isSubmitting}
-          activeOpacity={0.8}
-        >
-          <LinearGradient
-            colors={isSubmitting ? ['#94A3B8', '#64748B'] : ['#10B981', '#059669']}
-            style={styles.submitGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-          >
-            <Send color="#fff" size={20} strokeWidth={2} />
-            <Text style={styles.submitButtonText}>
-              {isSubmitting ? 'Submitting...' : 'Submit All Data'}
-            </Text>
-          </LinearGradient>
-        </TouchableOpacity>
+        {isSubmitting ? (
+          <View style={styles.loadingContainer}>
+            <LoadingSpinner text="Submitting data..." />
+          </View>
+        ) : (
+          <AnimatedButton
+            title="Submit All Data"
+            onPress={handleSubmit}
+            icon={Send}
+            variant="success"
+            style={styles.submitButton}
+          />
+        )}
       </Animated.View>
     </SafeAreaView>
   );
@@ -469,221 +415,171 @@ const FormScreen = ({ route, navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
-  },
-  backButton: {
-    backgroundColor: '#F1F5F9',
-    borderRadius: 12,
-    padding: 8,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1E293B',
-  },
-  headerRight: {
-    width: 44,
+    backgroundColor: COLORS.background,
   },
   progressContainer: {
-    backgroundColor: '#fff',
-    paddingHorizontal: 20,
-    paddingVertical: 15,
+    backgroundColor: COLORS.surface,
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.lg,
     borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
+    borderBottomColor: COLORS.neutral[200],
+  },
+  progressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.sm,
   },
   progressText: {
-    fontSize: 12,
-    color: '#64748B',
-    marginBottom: 8,
-    fontWeight: '500',
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.text.secondary,
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
+  },
+  progressPercentage: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: COLORS.primary[600],
+    fontWeight: TYPOGRAPHY.fontWeight.semibold,
   },
   progressBarContainer: {
-    height: 4,
-    backgroundColor: '#E2E8F0',
-    borderRadius: 2,
+    height: 6,
+    backgroundColor: COLORS.neutral[200],
+    borderRadius: BORDER_RADIUS.sm,
     overflow: 'hidden',
   },
   progressBar: {
     height: '100%',
-    backgroundColor: '#10B981',
-    borderRadius: 2,
-  },
-  progressPercentage: {
-    fontSize: 10,
-    color: '#64748B',
-    marginTop: 4,
-    textAlign: 'right',
-    fontWeight: '600',
+    backgroundColor: COLORS.success[500],
+    borderRadius: BORDER_RADIUS.sm,
   },
   tabContainer: {
     flexDirection: 'row',
-    backgroundColor: '#fff',
-    marginHorizontal: 20,
-    marginTop: 15,
-    borderRadius: 16,
-    padding: 6,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
+    backgroundColor: COLORS.surface,
+    marginHorizontal: SPACING.xl,
+    marginTop: SPACING.lg,
+    borderRadius: BORDER_RADIUS.xl,
+    padding: SPACING.xs,
+    ...SHADOWS.sm,
   },
   tabButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    gap: 8,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: BORDER_RADIUS.lg,
+    gap: SPACING.sm,
   },
   activeTab: {
     overflow: 'hidden',
   },
   tabText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#64748B',
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    fontWeight: TYPOGRAPHY.fontWeight.semibold,
+    color: COLORS.text.secondary,
   },
   activeTabText: {
-    color: '#fff',
+    color: COLORS.text.inverse,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    padding: 20,
+    padding: SPACING.xl,
     paddingBottom: 120,
   },
   formCard: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 24,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
+    padding: SPACING['2xl'],
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 24,
-    gap: 12,
+    marginBottom: SPACING['2xl'],
+    gap: SPACING.md,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#1E293B',
+    fontSize: TYPOGRAPHY.fontSize.xl,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: COLORS.text.primary,
   },
   inputContainer: {
-    marginBottom: 20,
+    marginBottom: SPACING.lg,
     borderWidth: 1.5,
-    borderRadius: 16,
-    padding: 16,
-    backgroundColor: '#FAFBFC',
-    elevation: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowRadius: 3,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.lg,
+    backgroundColor: COLORS.surface,
+    ...SHADOWS.sm,
   },
   inputLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#475569',
-    marginBottom: 8,
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    fontWeight: TYPOGRAPHY.fontWeight.semibold,
+    color: COLORS.text.secondary,
+    marginBottom: SPACING.sm,
   },
   input: {
-    fontSize: 16,
-    color: '#1E293B',
+    fontSize: TYPOGRAPHY.fontSize.base,
+    color: COLORS.text.primary,
     padding: 0,
-    fontWeight: '500',
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
   },
   breedSectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#374151',
-    marginTop: 24,
-    marginBottom: 16,
+    fontSize: TYPOGRAPHY.fontSize.lg,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: COLORS.text.primary,
+    marginTop: SPACING['2xl'],
+    marginBottom: SPACING.lg,
   },
   breedSection: {
-    gap: 12,
+    gap: SPACING.md,
   },
   breedContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F8FAFC',
-    borderRadius: 12,
-    padding: 16,
+    backgroundColor: COLORS.neutral[50],
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.lg,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: COLORS.neutral[200],
   },
   breedLabel: {
     flex: 1,
   },
   breedName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#374151',
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.semibold,
+    color: COLORS.text.primary,
   },
   breedInput: {
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.surface,
     borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1E293B',
+    borderColor: COLORS.neutral[300],
+    borderRadius: BORDER_RADIUS.md,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    fontSize: TYPOGRAPHY.fontSize.base,
+    fontWeight: TYPOGRAPHY.fontWeight.semibold,
+    color: COLORS.text.primary,
     width: 100,
+    textAlign: 'center',
   },
   submitContainer: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: '#fff',
-    paddingHorizontal: 20,
-    paddingVertical: 20,
+    backgroundColor: COLORS.surface,
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.xl,
     borderTopWidth: 1,
-    borderTopColor: '#E2E8F0',
+    borderTopColor: COLORS.neutral[200],
+    ...SHADOWS.lg,
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    paddingVertical: SPACING.lg,
   },
   submitButton: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-  },
-  submitButtonDisabled: {
-    elevation: 0,
-    shadowOpacity: 0,
-  },
-  submitGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 18,
-    gap: 10,
-  },
-  submitButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
+    width: '100%',
   },
 });
 

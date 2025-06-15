@@ -10,83 +10,11 @@ import {
   ScrollView,
   Platform,
 } from 'react-native';
-import LinearGradient from 'react-native-linear-gradient';
-import { ChevronLeft, Building, Archive, Syringe, Droplets, Wind, Clipboard, Milk, Leaf } from 'lucide-react-native';
-
-const ActionCard = ({ icon: Icon, title, onPress, gradient, delay = 0 }) => {
-  const cardAnim = useRef(new Animated.Value(0)).current;
-  const pressAnim = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    Animated.timing(cardAnim, {
-      toValue: 1,
-      duration: 500,
-      delay,
-      useNativeDriver: true,
-    }).start();
-  }, []);
-
-  const handlePress = () => {
-    Animated.sequence([
-      Animated.timing(pressAnim, {
-        toValue: 0.95,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-      Animated.timing(pressAnim, {
-        toValue: 1,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      if (onPress) {
-        onPress();
-      }
-    });
-  };
-
-  return (
-    <Animated.View
-      style={[
-        styles.cardContainer,
-        {
-          opacity: cardAnim,
-          transform: [
-            {
-              translateY: cardAnim.interpolate({
-                inputRange: [0, 1],
-                outputRange: [30, 0],
-              }),
-            },
-            { scale: pressAnim },
-          ],
-        },
-      ]}
-    >
-      <TouchableOpacity
-        style={styles.card}
-        onPress={handlePress}
-        activeOpacity={0.8}
-      >
-        <LinearGradient
-          colors={gradient}
-          style={styles.cardGradient}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        >
-          <View style={styles.cardContent}>
-            <View style={styles.iconContainer}>
-              <Icon color="#fff" size={28} strokeWidth={2} />
-            </View>
-            <View style={styles.cardText}>
-              <Text style={styles.cardTitle}>{title}</Text>
-            </View>
-          </View>
-        </LinearGradient>
-      </TouchableOpacity>
-    </Animated.View>
-  );
-};
+import { Building, Archive, Syringe, Droplets, Wind, Clipboard, Milk, Leaf } from 'lucide-react-native';
+import { COLORS, SPACING, TYPOGRAPHY, BORDER_RADIUS, SHADOWS, ANIMATIONS } from '../styles/globalStyles';
+import ModernHeader from '../components/common/ModernHeader';
+import AnimatedCard from '../components/common/AnimatedCard';
+import LoadingSpinner from '../components/common/LoadingSpinner';
 
 const iconMap = {
   'Infrastructure-Cattle shed': Building,
@@ -99,74 +27,144 @@ const iconMap = {
   'Handling of milk': Milk,
 };
 
+const gradientMap = [
+  COLORS.gradients.primary,
+  COLORS.gradients.secondary,
+  COLORS.gradients.success,
+  COLORS.gradients.warning,
+  COLORS.gradients.error,
+  COLORS.gradients.ocean,
+  COLORS.gradients.forest,
+  COLORS.gradients.royal,
+];
+
 const ScoreScreen = ({ navigation }) => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const [scoreCategories, setScoreCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
       toValue: 1,
-      duration: 800,
+      duration: ANIMATIONS.timing.slow,
       useNativeDriver: true,
     }).start();
-
-    const fetchScoreCategories = async () => {
-      try {
-        const response = await fetch('http://192.168.21.241:8081/api/sections');
-        const data = await response.json();
-        const categories = data.map(item => ({
-          id: item.id,
-          title: item.name,
-          icon: iconMap[item.name] || Wind, // Default icon
-          gradient: ['#06B6D4', '#0891B2'],
-        }));
-        setScoreCategories(categories);
-      } catch (error) {
-        console.error('Failed to fetch score categories:', error);
-      }
-    };
 
     fetchScoreCategories();
   }, []);
 
+  const fetchScoreCategories = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('http://192.168.21.241:8081/api/sections');
+      const data = await response.json();
+      const categories = data.map((item, index) => ({
+        id: item.id,
+        title: item.name,
+        icon: iconMap[item.name] || Wind,
+        gradient: gradientMap[index % gradientMap.length],
+        description: getDescriptionForCategory(item.name),
+      }));
+      setScoreCategories(categories);
+    } catch (error) {
+      console.error('Failed to fetch score categories:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getDescriptionForCategory = (name) => {
+    const descriptions = {
+      'Infrastructure-Cattle shed': 'Assess your cattle shed infrastructure and facilities',
+      'Feed and fodder storage and handing': 'Evaluate feed storage and handling practices',
+      'Animal nutrition- Improve feeding practices to improve animal health': 'Review animal nutrition and feeding methods',
+      'Animal health management': 'Check animal health management protocols',
+      "Milker's health and general hygiene": 'Assess milker hygiene and health practices',
+      'Preparation for milking': 'Evaluate pre-milking preparation procedures',
+      'Milking and post milking activities': 'Review milking and post-milking activities',
+      'Handling of milk': 'Assess milk handling and storage practices',
+    };
+    return descriptions[name] || 'Evaluate this aspect of your dairy operation';
+  };
+
+  const CategoryCard = ({ category, index }) => (
+    <AnimatedCard
+      onPress={() => {
+        if (category.id === 1) {
+          navigation.navigate('Infra', { sectionId: category.id });
+        } else {
+          console.log(`Navigate to ${category.title}`);
+        }
+      }}
+      gradient={category.gradient}
+      style={styles.categoryCard}
+      delay={index * 100}
+      animationType="fadeInUp"
+    >
+      <View style={styles.categoryContent}>
+        <View style={styles.categoryIconContainer}>
+          <category.icon color={COLORS.text.inverse} size={32} strokeWidth={2} />
+        </View>
+        <View style={styles.categoryTextContainer}>
+          <Text style={styles.categoryTitle}>{category.title}</Text>
+          <Text style={styles.categoryDescription}>{category.description}</Text>
+        </View>
+      </View>
+    </AnimatedCard>
+  );
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor={COLORS.primary[600]} />
+        <ModernHeader
+          title="Assessment Scorecard"
+          subtitle="Loading categories..."
+          onBackPress={() => navigation.goBack()}
+          gradient={COLORS.gradients.primary}
+        />
+        <View style={styles.loadingContainer}>
+          <LoadingSpinner size="large" text="Loading assessment categories..." />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0F172A" />
-      <Animated.View style={[styles.header, { opacity: fadeAnim }]}>
-        <LinearGradient
-          colors={['#0F172A', '#1E293B', '#334155']}
-          style={styles.headerGradient}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        >
-          <View style={styles.headerContent}>
-            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-              <ChevronLeft color="#fff" size={24} strokeWidth={2} />
-            </TouchableOpacity>
-            <Text style={styles.title}>Scorecard</Text>
-            <View style={{ width: 40 }} />
-          </View>
-        </LinearGradient>
-      </Animated.View>
+      <StatusBar barStyle="light-content" backgroundColor={COLORS.primary[600]} />
+      
+      <ModernHeader
+        title="Assessment Scorecard"
+        subtitle={`${scoreCategories.length} categories available`}
+        onBackPress={() => navigation.goBack()}
+        gradient={COLORS.gradients.primary}
+      />
 
-      <ScrollView contentContainerStyle={styles.actionsContainer}>
-        {scoreCategories.map((category, index) => (
-          <ActionCard
-            key={category.id}
-            icon={category.icon}
-            title={category.title}
-            onPress={() => {
-              if (category.id === 1) {
-                navigation.navigate('Infra');
-              } else {
-                console.log(`Navigate to ${category.title}`);
-              }
-            }}
-            gradient={category.gradient}
-            delay={index * 100}
-          />
-        ))}
-      </ScrollView>
+      <Animated.View
+        style={[
+          styles.content,
+          { opacity: fadeAnim },
+        ]}
+      >
+        <View style={styles.introSection}>
+          <Text style={styles.introTitle}>Dairy Performance Assessment</Text>
+          <Text style={styles.introDescription}>
+            Evaluate different aspects of your dairy operation to identify areas for improvement and track your progress over time.
+          </Text>
+        </View>
+
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={styles.sectionTitle}>Assessment Categories</Text>
+          
+          {scoreCategories.map((category, index) => (
+            <CategoryCard key={category.id} category={category} index={index} />
+          ))}
+        </ScrollView>
+      </Animated.View>
     </SafeAreaView>
   );
 };
@@ -174,70 +172,74 @@ const ScoreScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: COLORS.background,
   },
-  header: {
-    marginBottom: 20,
-  },
-  headerGradient: {
-    paddingTop: Platform.OS === 'ios' ? 20 : 0,
-  },
-  headerContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 25,
-  },
-  backButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  actionsContainer: {
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-    gap: 16,
-  },
-  cardContainer: {
-    marginBottom: 4,
-  },
-  card: {
-    borderRadius: 20,
-    overflow: 'hidden',
-    elevation: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-  },
-  cardGradient: {
-    padding: 24,
-  },
-  cardContent: {
-    flexDirection: 'row',
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  iconContainer: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 16,
-    padding: 12,
-    marginRight: 16,
-  },
-  cardText: {
+  content: {
     flex: 1,
   },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#fff',
+  introSection: {
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING['2xl'],
+    backgroundColor: COLORS.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.neutral[200],
+  },
+  introTitle: {
+    fontSize: TYPOGRAPHY.fontSize.xl,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: COLORS.text.primary,
+    marginBottom: SPACING.sm,
+  },
+  introDescription: {
+    fontSize: TYPOGRAPHY.fontSize.base,
+    color: COLORS.text.secondary,
+    lineHeight: TYPOGRAPHY.lineHeight.relaxed * TYPOGRAPHY.fontSize.base,
+  },
+  scrollContent: {
+    paddingHorizontal: SPACING.xl,
+    paddingBottom: SPACING['4xl'],
+  },
+  sectionTitle: {
+    fontSize: TYPOGRAPHY.fontSize.lg,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: COLORS.text.primary,
+    marginTop: SPACING['2xl'],
+    marginBottom: SPACING.lg,
+  },
+  categoryCard: {
+    marginBottom: SPACING.lg,
+    minHeight: 120,
+  },
+  categoryContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  categoryIconContainer: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.lg,
+    marginRight: SPACING.lg,
+  },
+  categoryTextContainer: {
+    flex: 1,
+  },
+  categoryTitle: {
+    fontSize: TYPOGRAPHY.fontSize.lg,
+    fontWeight: TYPOGRAPHY.fontWeight.bold,
+    color: COLORS.text.inverse,
+    marginBottom: SPACING.xs,
+    lineHeight: TYPOGRAPHY.lineHeight.tight * TYPOGRAPHY.fontSize.lg,
+  },
+  categoryDescription: {
+    fontSize: TYPOGRAPHY.fontSize.sm,
+    color: 'rgba(255, 255, 255, 0.9)',
+    fontWeight: TYPOGRAPHY.fontWeight.medium,
+    lineHeight: TYPOGRAPHY.lineHeight.normal * TYPOGRAPHY.fontSize.sm,
   },
 });
 
