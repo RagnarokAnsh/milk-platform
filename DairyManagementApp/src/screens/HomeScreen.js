@@ -131,6 +131,7 @@ const HomeScreen = ({ route, navigation }) => {
           <Text style={styles.statValue}>{loading ? '...' : formatNumber(value)}</Text>
           <Text style={styles.statTitle}>{title}</Text>
           {subtitle && <Text style={styles.statSubtitle}>{subtitle}</Text>}
+          }
         </View>
       </View>
     </AnimatedCard>
