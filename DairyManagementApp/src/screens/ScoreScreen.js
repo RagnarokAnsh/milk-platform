@@ -9,6 +9,8 @@ import {
   Animated,
   ScrollView,
   Platform,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { ChevronLeft, Building, Archive, Syringe, Droplets, Wind, Clipboard, Milk, Leaf } from 'lucide-react-native';
@@ -20,8 +22,8 @@ const ActionCard = ({ icon: Icon, title, onPress, gradient, delay = 0 }) => {
   useEffect(() => {
     Animated.timing(cardAnim, {
       toValue: 1,
-      duration: 500,
-      delay,
+      duration: 0,
+      // delay,
       useNativeDriver: true,
     }).start();
   }, []);
@@ -99,35 +101,88 @@ const iconMap = {
   'Handling of milk': Milk,
 };
 
-const ScoreScreen = ({ navigation }) => {
+// Dynamic gradient colors for different sections
+const gradientMap = {
+  1: ['#06B6D4', '#0891B2'], // Infrastructure - Cyan
+  2: ['#06B6D4', '#0891B2'], // Feed and fodder - Orange
+  3: ['#06B6D4', '#0891B2'], // Animal nutrition - Green
+  4: ['#06B6D4', '#0891B2'], // Animal health - Red
+  5: ['#06B6D4', '#0891B2'], // Milker's health - Purple
+  6: ['#06B6D4', '#0891B2'], // Preparation for milking - Blue
+  7: ['#06B6D4', '#0891B2'], // Milking activities - Pink
+  8: ['#06B6D4', '#0891B2'], // Handling of milk - Indigo
+};
+
+const ScoreScreen = ({ route, navigation }) => {
+  const { userId } = route.params;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const [scoreCategories, setScoreCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
       toValue: 1,
-      duration: 800,
+      duration: 0,
       useNativeDriver: true,
     }).start();
 
-    const fetchScoreCategories = async () => {
-      try {
-        const response = await fetch('http://192.168.21.241:8081/api/sections');
-        const data = await response.json();
-        const categories = data.map(item => ({
-          id: item.id,
-          title: item.name,
-          icon: iconMap[item.name] || Wind, // Default icon
-          gradient: ['#06B6D4', '#0891B2'],
-        }));
-        setScoreCategories(categories);
-      } catch (error) {
-        console.error('Failed to fetch score categories:', error);
-      }
-    };
-
     fetchScoreCategories();
   }, []);
+
+  const fetchScoreCategories = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('http://3.6.143.181:8501/api/sections');
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch sections');
+      }
+      
+      const data = await response.json();
+      
+      const categories = data.map(item => ({
+        id: item.id,
+        title: item.name,
+        icon: iconMap[item.name] || Wind, // Default icon
+        gradient: gradientMap[item.id] || ['#06B6D4', '#0891B2'], // Default gradient
+      }));
+      
+      setScoreCategories(categories);
+    } catch (error) {
+      console.error('Failed to fetch score categories:', error);
+      Alert.alert(
+        'Error',
+        'Failed to load assessment categories. Please check your connection and try again.',
+        [
+          { text: 'Retry', onPress: fetchScoreCategories },
+          { text: 'Cancel', style: 'cancel' }
+        ]
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCategoryPress = (category) => {
+    // Navigate to InfraScreen with the selected section ID
+    navigation.navigate('Infra', { 
+      userId: userId,
+      sectionId: category.id,
+      sectionName: category.title
+    });
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor="#0F172A" />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#8B5CF6" />
+          <Text style={styles.loadingText}>Loading assessment categories...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -143,25 +198,24 @@ const ScoreScreen = ({ navigation }) => {
             <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
               <ChevronLeft color="#fff" size={24} strokeWidth={2} />
             </TouchableOpacity>
-            <Text style={styles.title}>Scorecard</Text>
+            <Text style={styles.title}>Assessment Categories</Text>
             <View style={{ width: 40 }} />
           </View>
         </LinearGradient>
       </Animated.View>
 
       <ScrollView contentContainerStyle={styles.actionsContainer}>
+        <Text style={styles.sectionTitle}>Choose a category to assess:</Text>
+        <Text style={styles.sectionDescription}>
+          Select any category below to start your assessment. Each category contains specific subsections that you can evaluate.
+        </Text>
+        
         {scoreCategories.map((category, index) => (
           <ActionCard
             key={category.id}
             icon={category.icon}
             title={category.title}
-            onPress={() => {
-              if (category.id === 1) {
-                navigation.navigate('Infra');
-              } else {
-                console.log(`Navigate to ${category.title}`);
-              }
-            }}
+            onPress={() => handleCategoryPress(category)}
             gradient={category.gradient}
             delay={index * 100}
           />
@@ -175,6 +229,18 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F8FAFC',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#64748B',
+    marginTop: 16,
+    fontWeight: '500',
   },
   header: {
     marginBottom: 20,
@@ -204,10 +270,21 @@ const styles = StyleSheet.create({
   actionsContainer: {
     paddingHorizontal: 20,
     paddingBottom: 20,
-    gap: 16,
+  },
+  sectionTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1E293B',
+    marginBottom: 8,
+  },
+  sectionDescription: {
+    fontSize: 16,
+    color: '#64748B',
+    marginBottom: 24,
+    lineHeight: 22,
   },
   cardContainer: {
-    marginBottom: 4,
+    marginBottom: 16,
   },
   card: {
     borderRadius: 20,

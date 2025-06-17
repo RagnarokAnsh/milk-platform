@@ -17,7 +17,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import {
-  ArrowLeft,
+  ChevronLeft,
   Camera,
   Upload,
   ChevronDown,
@@ -48,8 +48,9 @@ const InfraScreen = ({ navigation, route }) => {
   const [scores, setScores] = useState({});
   const [submitting, setSubmitting] = useState({});
   
-  // Track loading state per category instead of globally
-  const [loadingCategories, setLoadingCategories] = useState({});
+  // Store dynamic score descriptions for each subsection
+  const [scoreDescriptions, setScoreDescriptions] = useState({});
+  const [loadingDescriptions, setLoadingDescriptions] = useState({});
 
   // Animation values - simplified for smoother performance
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -67,7 +68,7 @@ const InfraScreen = ({ navigation, route }) => {
   const fetchSubsections = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`http://192.168.21.241:8081/api/sections/${sectionId}/subsections`);
+      const response = await fetch(`http://3.6.143.181:8501/api/sections/${sectionId}/subsections`);
       const data = await response.json();
       
       if (response.ok) {
@@ -90,6 +91,99 @@ const InfraScreen = ({ navigation, route }) => {
     }
   };
 
+  const fetchScoreDescriptions = async (subsectionId) => {
+    // Don't fetch if already loading or already have descriptions
+    if (loadingDescriptions[subsectionId] || scoreDescriptions[subsectionId]) {
+      return;
+    }
+
+    try {
+      setLoadingDescriptions(prev => ({ ...prev, [subsectionId]: true }));
+      
+      const response = await fetch(`http://3.6.143.181:8501/api/subsections/${subsectionId}/score-descriptions`);
+      const data = await response.json();
+      
+      if (response.ok) {
+        // Transform the API response into the format expected by the component
+        const descriptionsMap = {};
+        data.forEach(item => {
+          descriptionsMap[item.scoreValue] = {
+            text: getScoreTextByValue(item.scoreValue),
+            color: getScoreColorByValue(item.scoreValue),
+            icon: getScoreIconByValue(item.scoreValue),
+            description: item.description
+          };
+        });
+        
+        setScoreDescriptions(prev => ({
+          ...prev,
+          [subsectionId]: descriptionsMap
+        }));
+      } else {
+        throw new Error('Failed to fetch score descriptions');
+      }
+    } catch (error) {
+      console.error('Error fetching score descriptions:', error);
+      // Use fallback descriptions if API fails
+      setScoreDescriptions(prev => ({
+        ...prev,
+        [subsectionId]: getDefaultScoreDescriptions()
+      }));
+    } finally {
+      setLoadingDescriptions(prev => ({ ...prev, [subsectionId]: false }));
+    }
+  };
+
+  // Helper functions to get score properties by value
+  const getScoreTextByValue = (scoreValue) => {
+    switch (scoreValue) {
+      case 1: return 'Bad Practice';
+      case 2: return 'Needs Improvement';
+      case 3: return 'Good Practice';
+      default: return 'Not Assessed';
+    }
+  };
+
+  const getScoreColorByValue = (scoreValue) => {
+    switch (scoreValue) {
+      case 1: return '#EF4444';
+      case 2: return '#F59E0B';
+      case 3: return '#10B981';
+      default: return '#6B7280';
+    }
+  };
+
+  const getScoreIconByValue = (scoreValue) => {
+    switch (scoreValue) {
+      case 1: return XCircle;
+      case 2: return AlertCircle;
+      case 3: return CheckCircle;
+      default: return Camera;
+    }
+  };
+
+  // Fallback descriptions in case API fails
+  const getDefaultScoreDescriptions = () => ({
+    1: {
+      text: 'Bad Practice',
+      color: '#EF4444',
+      icon: XCircle,
+      description: 'No Description available.'
+    },
+    2: {
+      text: 'Needs Improvement',
+      color: '#F59E0B',
+      icon: AlertCircle,
+      description: 'No Description available.'
+    },
+    3: {
+      text: 'Good Practice',
+      color: '#10B981',
+      icon: CheckCircle,
+      description: 'No Description available.'
+    }
+  });
+
   const submitScore = async (subsectionId, scoreValue) => {
     if (!userId) {
       Alert.alert('Error', 'User ID is required to submit scores.');
@@ -99,7 +193,7 @@ const InfraScreen = ({ navigation, route }) => {
     try {
       setSubmitting(prev => ({ ...prev, [subsectionId]: true }));
       
-      const response = await fetch('http://192.168.21.241:8081/api/scores', {
+      const response = await fetch('http://3.6.143.181:8501/api/scores', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -142,62 +236,21 @@ const InfraScreen = ({ navigation, route }) => {
     return Home; // Default icon
   };
 
-  const scoreDescriptions = {
-    1: {
-      text: 'Bad Practice',
-      color: '#EF4444',
-      icon: XCircle,
-      descriptions: {
-        'CATTLE SHED FLOORING': 'Kachcha floor made of mud or small stones. Areas are wet or have waterlogged patches.',
-        'CATTLE SHED ROOFING': 'Animals are tied in open without roof to protect from direct sunlight and rain.',
-        'SPACE INSIDE THE CATTLE SHED': 'There is not enough space in the shed, resulting in overcrowded living in cramped and uncomfortable conditions.',
-        'AIRFLOW AND VENTILATION IN CATTLE SHED': 'There is no or very minimal ventilation, leading to high heat and humidity, and foul odor inside the shed.',
-        'DRAINAGE SYSTEM INSIDE THE CATTLE SHED': 'No drainage inside the shed, leading to waterlogging and lots of flies.',
-        'WASTE MANAGEMENT': 'Lack a dung pit or organized system for waste and dung disposal. Dung and urine are scattered around the shed, attracting numerous flies.'
-      }
-    },
-    2: {
-      text: 'Needs Improvement',
-      color: '#F59E0B',
-      icon: AlertCircle,
-      descriptions: {
-        'CATTLE SHED FLOORING': 'Floor has some slippery areas but mostly adequate grip.',
-        'CATTLE SHED ROOFING': 'Roof height is low, with lowest point being less than 8 feet.',
-        'SPACE INSIDE THE CATTLE SHED': 'Space is limited but animals can move with some restrictions.',
-        'AIRFLOW AND VENTILATION IN CATTLE SHED': 'Limited provision for cross ventilation, leading to foul odor in the shed.',
-        'DRAINAGE SYSTEM INSIDE THE CATTLE SHED': 'The shed has a drain, but wastewater is not properly drained out, leading to waterlogging.',
-        'WASTE MANAGEMENT': 'The dung pit is constructed but poorly maintained. It is exposed or leaking, hindering drainage, and serving as a breeding ground for flies.'
-      }
-    },
-    3: {
-      text: 'Good Practice',
-      color: '#10B981',
-      icon: CheckCircle,
-      descriptions: {
-        'CATTLE SHED FLOORING': 'Concrete floor with rubber mats to ensure adequate grip.',
-        'CATTLE SHED ROOFING': 'Roof is high enough for animals and provides excellent protection being more than 10-12 feet.',
-        'SPACE INSIDE THE CATTLE SHED': 'There is sufficient space in the shed and animals are staying in comfortable conditions.',
-        'AIRFLOW AND VENTILATION IN CATTLE SHED': 'Properly ventilated shed with adequate airflow, leading to low humidity, temperature, and no foul odor in the shed.',
-        'DRAINAGE SYSTEM INSIDE THE CATTLE SHED': 'The shed has proper drain that allows all wastewater to flow out easily, preventing any waterlogging in the shed.',
-        'WASTE MANAGEMENT': 'A concrete dung pit or biogas production structure is properly constructed and maintained. Drains are free from waterlogging.'
-      }
-    }
-  };
-
   const getScoreColor = (score) => {
-    return scoreDescriptions[score]?.color || '#6B7280';
+    return getScoreColorByValue(score);
   };
 
   const getScoreText = (score) => {
-    return scoreDescriptions[score]?.text || 'Not Assessed';
+    return getScoreTextByValue(score);
   };
 
   const getScoreIcon = (score) => {
-    return scoreDescriptions[score]?.icon || Camera;
+    return getScoreIconByValue(score);
   };
 
-  const getScoreDescription = (score, subsectionName) => {
-    return scoreDescriptions[score]?.descriptions[subsectionName] || 'No description available';
+  const getScoreDescription = (score, subsectionId) => {
+    const descriptions = scoreDescriptions[subsectionId];
+    return descriptions?.[score]?.description || 'No description available';
   };
 
   const toggleSection = (sectionId) => {
@@ -205,6 +258,11 @@ const InfraScreen = ({ navigation, route }) => {
       ...prev,
       [sectionId]: !prev[sectionId]
     }));
+
+    // Fetch score descriptions when section is expanded
+    if (!expandedSections[sectionId]) {
+      fetchScoreDescriptions(sectionId);
+    }
   };
 
   const handleImageUpload = async (subsection) => {
@@ -262,92 +320,131 @@ const InfraScreen = ({ navigation, route }) => {
     });
   };
 
-  const ScoreSelector = ({ subsection }) => {
-    const [selectedScore, setSelectedScore] = useState(scores[subsection.id] || null);
-    const isSubmitting = submitting[subsection.id];
+  // Helper function to get default description by score value
+const getDefaultScoreDescription = (scoreValue) => {
+  switch (scoreValue) {
+    case 1: return 'No description available.';
+    case 2: return 'No description available.';
+    case 3: return 'No description available.';
+    default: return 'No description available';
+  }
+};
 
-    const handleScoreSelect = (score) => {
-      setSelectedScore(score);
-    };
+const ScoreSelector = ({ subsection }) => {
+  const [selectedScore, setSelectedScore] = useState(scores[subsection.id] || null);
+  const isSubmitting = submitting[subsection.id];
+  
+  // Use default descriptions if API data isn't loaded yet
+  const subsectionDescriptions = scoreDescriptions[subsection.id] || getDefaultScoreDescriptions();
+  const isLoadingDescriptions = loadingDescriptions[subsection.id];
 
-    const handleSubmit = () => {
-      if (selectedScore) {
-        submitScore(subsection.id, selectedScore);
-      } else {
-        Alert.alert('Error', 'Please select a score before submitting.');
-      }
-    };
+  const handleScoreSelect = (score) => {
+    setSelectedScore(score);
+  };
 
+  const handleSubmit = () => {
+    if (selectedScore) {
+      submitScore(subsection.id, selectedScore);
+    } else {
+      Alert.alert('Error', 'Please select a score before submitting.');
+    }
+  };
+
+  if (isLoadingDescriptions) {
     return (
       <View style={styles.scoreSelector}>
-        <Text style={styles.scoreSelectorTitle}>Rate this category:</Text>
-        
-        {[1, 2, 3].map((score) => {
-          const isSelected = selectedScore === score;
-          const scoreInfo = scoreDescriptions[score];
-          const ScoreIcon = scoreInfo.icon;
-          
-          return (
-            <TouchableOpacity
-              key={score}
-              style={[
-                styles.scoreOption,
-                isSelected && { backgroundColor: scoreInfo.color + '20', borderColor: scoreInfo.color }
-              ]}
-              onPress={() => handleScoreSelect(score)}
-              activeOpacity={0.7}
-            >
-              <View style={styles.scoreOptionHeader}>
-                <View style={[styles.scoreOptionIcon, { backgroundColor: scoreInfo.color }]}>
-                  <ScoreIcon color="#fff" size={20} strokeWidth={2} />
-                </View>
-                <View style={styles.scoreOptionInfo}>
-                  <Text style={[styles.scoreOptionText, isSelected && { color: scoreInfo.color }]}>
-                    {scoreInfo.text}
-                  </Text>
-                  <Text style={styles.scoreOptionValue}>Score: {score}</Text>
-                </View>
-                <View style={[styles.radioButton, isSelected && { backgroundColor: scoreInfo.color }]}>
-                  {isSelected && <View style={styles.radioButtonInner} />}
-                </View>
-              </View>
-              <Text style={styles.scoreOptionDescription}>
-                {getScoreDescription(score, subsection.name)}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-
-        <TouchableOpacity
-          style={[
-            styles.submitButton,
-            (!selectedScore || isSubmitting) && styles.submitButtonDisabled
-          ]}
-          onPress={handleSubmit}
-          disabled={!selectedScore || isSubmitting}
-          activeOpacity={0.8}
-        >
-          <LinearGradient
-            colors={
-              selectedScore && !isSubmitting 
-                ? ['#8B5CF6', '#7C3AED'] 
-                : ['#9CA3AF', '#6B7280']
-            }
-            style={styles.submitGradient}
-          >
-            {isSubmitting ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <>
-                <Send color="#fff" size={20} strokeWidth={2} />
-                <Text style={styles.submitButtonText}>Submit Score</Text>
-              </>
-            )}
-          </LinearGradient>
-        </TouchableOpacity>
+        <View style={styles.loadingDescriptions}>
+          <ActivityIndicator size="small" color="#8B5CF6" />
+          <Text style={styles.loadingDescriptionsText}>Loading score descriptions...</Text>
+        </View>
       </View>
     );
-  };
+  }
+
+  return (
+    <View style={styles.scoreSelector}>
+      <Text style={styles.scoreSelectorTitle}>Rate this category:</Text>
+      
+      {[1, 2, 3].map((score) => {
+        const isSelected = selectedScore === score;
+        const scoreInfo = subsectionDescriptions[score];
+        
+        // Ensure we always have the correct icon, text, and color
+        const ScoreIcon = scoreInfo?.icon || getScoreIconByValue(score);
+        const scoreText = scoreInfo?.text || getScoreTextByValue(score);
+        const scoreColor = scoreInfo?.color || getScoreColorByValue(score);
+        const scoreDescription = scoreInfo?.description || getDefaultScoreDescription(score);
+        
+        return (
+          <TouchableOpacity
+            key={score}
+            style={[
+              styles.scoreOption,
+              isSelected && { 
+                backgroundColor: scoreColor + '20', 
+                borderColor: scoreColor 
+              }
+            ]}
+            onPress={() => handleScoreSelect(score)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.scoreOptionHeader}>
+              <View style={[styles.scoreOptionIcon, { backgroundColor: scoreColor }]}>
+                <ScoreIcon color="#fff" size={20} strokeWidth={2} />
+              </View>
+              <View style={styles.scoreOptionInfo}>
+                <Text style={[
+                  styles.scoreOptionText, 
+                  isSelected && { color: scoreColor }
+                ]}>
+                  {scoreText}
+                </Text>
+                <Text style={styles.scoreOptionValue}>Score: {score}</Text>
+              </View>
+              <View style={[
+                styles.radioButton, 
+                isSelected && { backgroundColor: scoreColor }
+              ]}>
+                {isSelected && <View style={styles.radioButtonInner} />}
+              </View>
+            </View>
+            <Text style={styles.scoreOptionDescription}>
+              {scoreDescription}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+
+      <TouchableOpacity
+        style={[
+          styles.submitButton,
+          (!selectedScore || isSubmitting) && styles.submitButtonDisabled
+        ]}
+        onPress={handleSubmit}
+        disabled={!selectedScore || isSubmitting}
+        activeOpacity={0.8}
+      >
+        <LinearGradient
+          colors={
+            selectedScore && !isSubmitting 
+              ? ['#8B5CF6', '#7C3AED'] 
+              : ['#9CA3AF', '#6B7280']
+          }
+          style={styles.submitGradient}
+        >
+          {isSubmitting ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <>
+              <Send color="#fff" size={20} strokeWidth={2} />
+              <Text style={styles.submitButtonText}>Submit Score</Text>
+            </>
+          )}
+        </LinearGradient>
+      </TouchableOpacity>
+    </View>
+  );
+};
 
   const CategoryCard = ({ subsection, index }) => {
     const isExpanded = expandedSections[subsection.id];
@@ -476,11 +573,10 @@ const InfraScreen = ({ navigation, route }) => {
               style={styles.backButton}
               activeOpacity={0.8}
             >
-              <ArrowLeft color="#fff" size={24} strokeWidth={2} />
+              <ChevronLeft color="#fff" size={24} strokeWidth={2} />
             </TouchableOpacity>
             <View style={styles.headerTextContainer}>
-              <Text style={styles.headerTitle}>Infrastructure Assessment</Text>
-              <Text style={styles.headerSubtitle}>
+              <Text style={styles.headerTitle} numberOfLines={1}>
                 {subsections.length > 0 ? subsections[0].section.name : 'Loading...'}
               </Text>
             </View>
@@ -522,6 +618,18 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontWeight: '500',
   },
+  loadingDescriptions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 20,
+  },
+  loadingDescriptionsText: {
+    fontSize: 14,
+    color: '#64748B',
+    marginLeft: 8,
+    fontWeight: '500',
+  },
   header: {
     marginBottom: 20,
   },
@@ -544,11 +652,13 @@ const styles = StyleSheet.create({
   headerTextContainer: {
     flex: 1,
     alignItems: 'center',
+    paddingLeft: 16,
   },
   headerTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#fff',
+    textAlign: 'center',
   },
   headerSubtitle: {
     fontSize: 14,

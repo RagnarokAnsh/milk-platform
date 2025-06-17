@@ -33,6 +33,7 @@ const HomeScreen = ({ route, navigation }) => {
   const { userId } = route.params;
 
   const [stats, setStats] = useState({ totalRecords: 0, locations: 0 });
+  const [userName, setUserName] = useState('');
   const [loading, setLoading] = useState(true);
   
   // Animation values
@@ -70,6 +71,11 @@ const HomeScreen = ({ route, navigation }) => {
           getBuffaloesList(),
         ]);
 
+        const currentUser = usersResponse.data.find(user => user.userId === userId);
+        if (currentUser) {
+          setUserName(currentUser.firstName);
+        }
+
         const locationCount = usersResponse.data.filter(u => u.latitude && u.longitude).length;
         
         const milkingCows = cowsResponse.data.reduce((sum, record) => sum + (record.milking || 0), 0);
@@ -86,7 +92,7 @@ const HomeScreen = ({ route, navigation }) => {
     };
 
     fetchDashboardData();
-  }, []);
+  }, [userId]);
 
   const handleLogout = () => {
     Alert.alert(
@@ -133,8 +139,8 @@ const HomeScreen = ({ route, navigation }) => {
     useEffect(() => {
       Animated.timing(cardAnim, {
         toValue: 1,
-        duration: 500,
-        delay,
+        duration: 0,
+        // delay,
         useNativeDriver: true,
       }).start();
     }, []);
@@ -229,7 +235,7 @@ const HomeScreen = ({ route, navigation }) => {
               </View>
               <View>
                 <Text style={styles.welcomeText}>Welcome back</Text>
-                <Text style={styles.title}>Dairy Manager</Text>
+                <Text style={styles.title}>{userName || 'Dairy Manager'}</Text>
               </View>
             </View>
             <TouchableOpacity
@@ -281,7 +287,7 @@ const HomeScreen = ({ route, navigation }) => {
         <ActionCard
           icon={Plus}
           title="Add Livestock Data"
-          subtitle="Record new dairy information"
+          subtitle="Record dairy information"
           onPress={() => navigation.navigate('FormScreen', { userId })}
           gradient={['#8B5CF6', '#7C3AED']}
           delay={200}
@@ -305,14 +311,14 @@ const HomeScreen = ({ route, navigation }) => {
           delay={600}
         />
         
-        <ActionCard
+        {/* <ActionCard
           icon={Trash2}
           title="Clear All Data"
           subtitle="Delete all saved entries"
           onPress={clearData}
           gradient={['#8B5CF6', '#7C3AED']}
           delay={800}
-        />
+        /> */}
       </View>
 
       {/* Footer */}
@@ -325,7 +331,7 @@ const HomeScreen = ({ route, navigation }) => {
         ]}
       >
         <Text style={styles.footerText}>Digital Dairy Management System</Text>
-        <Text style={styles.versionText}>Version 2.0</Text>
+        {/* <Text style={styles.versionText}>Version 2.0</Text> */}
       </Animated.View>
     </SafeAreaView>
   );
