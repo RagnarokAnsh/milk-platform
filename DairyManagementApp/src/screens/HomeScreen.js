@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import Toast from 'react-native-toast-message';
 import {
   View,
   Text,
@@ -85,7 +86,7 @@ const HomeScreen = ({ route, navigation }) => {
         setStats({ totalRecords: totalMilkingAnimals, locations: locationCount });
       } catch (error) {
         console.error('Failed to fetch dashboard data', error);
-        Alert.alert('Error', 'Could not load dashboard data.');
+        Toast.show({ type: 'error', text1: 'Error', text2: 'Could not load dashboard data.' });
       } finally {
         setLoading(false);
       }
@@ -121,9 +122,9 @@ const HomeScreen = ({ route, navigation }) => {
           onPress: async () => {
             try {
               await AsyncStorage.removeItem('dairyData');
-              Alert.alert('Success', 'All dairy data has been cleared.');
+              Toast.show({ type: 'success', text1: 'Success', text2: 'All dairy data has been cleared.' });
             } catch (error) {
-              Alert.alert('Error', 'Failed to clear data.');
+              Toast.show({ type: 'error', text1: 'Error', text2: 'Failed to clear data.' });
             }
           },
           style: 'destructive',
@@ -286,7 +287,7 @@ const HomeScreen = ({ route, navigation }) => {
       <View style={styles.actionsContainer}>
         <ActionCard
           icon={Plus}
-          title="Add Livestock Data"
+          title="Livestock Data"
           subtitle="Record dairy information"
           onPress={() => navigation.navigate('FormScreen', { userId })}
           gradient={['#8B5CF6', '#7C3AED']}

@@ -145,129 +145,277 @@ const MapScreen = ({ navigation }) => {
     }
   };
 
+  // Function to create clusters from user data
+  const createClusters = (users, zoomLevel = 5) => {
+    const clusters = [];
+    const processed = new Set();
+    const clusterRadius = 0.1; // Adjust this value to control clustering sensitivity
+
+    users.forEach((user, index) => {
+      if (processed.has(index)) return;
+
+      const cluster = {
+        lat: user.latitude,
+        lng: user.longitude,
+        users: [user],
+        id: `cluster_${index}`,
+      };
+
+      // Find nearby users to cluster
+      users.forEach((otherUser, otherIndex) => {
+        if (index === otherIndex || processed.has(otherIndex)) return;
+
+        const distance = Math.sqrt(
+          Math.pow(user.latitude - otherUser.latitude, 2) +
+          Math.pow(user.longitude - otherUser.longitude, 2)
+        );
+
+        if (distance < clusterRadius) {
+          cluster.users.push(otherUser);
+          processed.add(otherIndex);
+        }
+      });
+
+      processed.add(index);
+      clusters.push(cluster);
+    });
+
+    return clusters;
+  };
+
   const generateMapHTML = () => {
-    const markers = users.map((user, index) => ({
-      lat: user.latitude,
-      lng: user.longitude,
-      popup: `
-        <div style="
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
-          min-width: 280px; 
-          max-width: 320px;
-          background: white;
-          border-radius: 16px;
-          overflow: hidden;
-          box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-          border: none;
-        ">
-          <div style="
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-            padding: 20px; 
-            position: relative;
-            overflow: hidden;
-          ">
+    const clusters = createClusters(users);
+    
+    const clusterMarkers = clusters.map((cluster, index) => {
+      const isCluster = cluster.users.length > 1;
+      
+      if (isCluster) {
+        // Create cluster marker
+        return {
+          lat: cluster.lat,
+          lng: cluster.lng,
+          isCluster: true,
+          count: cluster.users.length,
+          users: cluster.users,
+          popup: `
             <div style="
-              position: absolute;
-              top: -50%;
-              right: -50%;
-              width: 100%;
-              height: 100%;
-              background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
-            "></div>
-            <h3 style="
-              margin: 0; 
-              color: white; 
-              font-size: 18px; 
-              font-weight: 700;
-              letter-spacing: 0.5px;
-            ">${user.firstName} ${user.surname}</h3>
-          </div>
-          <div style="padding: 20px;">
-            <div style="
-              display: flex; 
-              align-items: center; 
-              margin: 12px 0; 
-              padding: 12px;
-              background: #f8fafc;
-              border-radius: 12px;
-              border-left: 4px solid #667eea;
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+              min-width: 320px; 
+              max-width: 380px;
+              background: white;
+              border-radius: 16px;
+              overflow: hidden;
+              box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+              border: none;
             ">
-              <span style="
-                margin-right: 12px; 
-                font-size: 16px;
-                background: #667eea;
-                color: white;
-                width: 28px;
-                height: 28px;
-                border-radius: 50%;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-              ">📍</span>
-              <div>
-                <div style="font-weight: 600; color: #1e293b; font-size: 14px;">${user.village}</div>
-                <div style="color: #64748b; font-size: 12px;">${user.block}, ${user.district}</div>
-              </div>
-            </div>
-            <div style="
-              display: flex; 
-              align-items: center; 
-              margin: 12px 0; 
-              padding: 12px;
-              background: #f0fdf4;
-              border-radius: 12px;
-              border-left: 4px solid #10b981;
-            ">
-              <span style="
-                margin-right: 12px; 
-                font-size: 16px;
-                background: #10b981;
-                color: white;
-                width: 28px;
-                height: 28px;
-                border-radius: 50%;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-              ">📞</span>
-              <div>
-                <div style="font-weight: 600; color: #1e293b; font-size: 14px;">Contact</div>
-                <div style="color: #64748b; font-size: 12px;">${user.contactNumber}</div>
-              </div>
-            </div>
-            <button 
-              onclick="showDetails(${index})" 
-              style="
-                background: linear-gradient(135deg, #667eea, #764ba2); 
-                color: white; 
-                border: none; 
-                padding: 14px 20px; 
-                border-radius: 12px; 
-                margin-top: 16px; 
-                cursor: pointer; 
-                font-weight: 600;
-                font-size: 14px;
-                width: 100%;
-                transition: all 0.3s ease;
-                box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+              <div style="
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                padding: 20px; 
                 position: relative;
                 overflow: hidden;
-              "
-              onmouseover="
-                this.style.transform='translateY(-2px)'; 
-                this.style.boxShadow='0 8px 20px rgba(102, 126, 234, 0.4)';
-              "
-              onmouseout="
-                this.style.transform='translateY(0)'; 
-                this.style.boxShadow='0 4px 12px rgba(102, 126, 234, 0.3)';
-              "
-            >
-              <span style="position: relative; z-index: 1;">View Full Details</span>
-            </button>
-          </div>
-        </div>
-      `,
-    }));
+              ">
+                <div style="
+                  position: absolute;
+                  top: -50%;
+                  right: -50%;
+                  width: 100%;
+                  height: 100%;
+                  background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+                "></div>
+                <h3 style="
+                  margin: 0; 
+                  color: white; 
+                  font-size: 18px; 
+                  font-weight: 700;
+                  letter-spacing: 0.5px;
+                ">📍 ${cluster.users.length} Dairy Locations</h3>
+                <p style="
+                  margin: 8px 0 0 0; 
+                  color: rgba(255,255,255,0.9); 
+                  font-size: 14px;
+                ">Multiple farmers in this area</p>
+              </div>
+              <div style="padding: 20px; max-height: 300px; overflow-y: auto;">
+                ${cluster.users.map((user, userIndex) => `
+                  <div style="
+                    display: flex; 
+                    align-items: center; 
+                    margin: 12px 0; 
+                    padding: 12px;
+                    background: ${userIndex % 2 === 0 ? '#f8fafc' : '#f0fdf4'};
+                    border-radius: 12px;
+                    border-left: 4px solid ${userIndex % 2 === 0 ? '#667eea' : '#10b981'};
+                  ">
+                    <span style="
+                      margin-right: 12px; 
+                      font-size: 16px;
+                      background: ${userIndex % 2 === 0 ? '#667eea' : '#10b981'};
+                      color: white;
+                      width: 28px;
+                      height: 28px;
+                      border-radius: 50%;
+                      display: flex;
+                      align-items: center;
+                      justify-content: center;
+                      font-weight: bold;
+                    ">${user.firstName.charAt(0)}</span>
+                    <div style="flex: 1;">
+                      <div style="font-weight: 600; color: #1e293b; font-size: 14px;">${user.firstName} ${user.surname}</div>
+                      <div style="color: #64748b; font-size: 12px;">${user.village}, ${user.district}</div>
+                      <div style="color: #64748b; font-size: 11px;">${user.contactNumber}</div>
+                    </div>
+                    <button 
+                      onclick="showDetails(${users.findIndex(u => u.userId === user.userId)})" 
+                      style="
+                        background: ${userIndex % 2 === 0 ? '#667eea' : '#10b981'}; 
+                        color: white; 
+                        border: none; 
+                        padding: 6px 12px; 
+                        border-radius: 8px; 
+                        cursor: pointer; 
+                        font-weight: 600;
+                        font-size: 11px;
+                        transition: all 0.2s ease;
+                      "
+                      onmouseover="this.style.opacity='0.8'"
+                      onmouseout="this.style.opacity='1'"
+                    >
+                      View
+                    </button>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `,
+        };
+      } else {
+        // Single user marker
+        const user = cluster.users[0];
+        return {
+          lat: user.latitude,
+          lng: user.longitude,
+          isCluster: false,
+          popup: `
+            <div style="
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+              min-width: 280px; 
+              max-width: 320px;
+              background: white;
+              border-radius: 16px;
+              overflow: hidden;
+              box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+              border: none;
+            ">
+              <div style="
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                padding: 20px; 
+                position: relative;
+                overflow: hidden;
+              ">
+                <div style="
+                  position: absolute;
+                  top: -50%;
+                  right: -50%;
+                  width: 100%;
+                  height: 100%;
+                  background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+                "></div>
+                <h3 style="
+                  margin: 0; 
+                  color: white; 
+                  font-size: 18px; 
+                  font-weight: 700;
+                  letter-spacing: 0.5px;
+                ">${user.firstName} ${user.surname}</h3>
+              </div>
+              <div style="padding: 20px;">
+                <div style="
+                  display: flex; 
+                  align-items: center; 
+                  margin: 12px 0; 
+                  padding: 12px;
+                  background: #f8fafc;
+                  border-radius: 12px;
+                  border-left: 4px solid #667eea;
+                ">
+                  <span style="
+                    margin-right: 12px; 
+                    font-size: 16px;
+                    background: #667eea;
+                    color: white;
+                    width: 28px;
+                    height: 28px;
+                    border-radius: 50%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                  ">📍</span>
+                  <div>
+                    <div style="font-weight: 600; color: #1e293b; font-size: 14px;">${user.village}</div>
+                    <div style="color: #64748b; font-size: 12px;">${user.block}, ${user.district}</div>
+                  </div>
+                </div>
+                <div style="
+                  display: flex; 
+                  align-items: center; 
+                  margin: 12px 0; 
+                  padding: 12px;
+                  background: #f0fdf4;
+                  border-radius: 12px;
+                  border-left: 4px solid #10b981;
+                ">
+                  <span style="
+                    margin-right: 12px; 
+                    font-size: 16px;
+                    background: #10b981;
+                    color: white;
+                    width: 28px;
+                    height: 28px;
+                    border-radius: 50%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                  ">📞</span>
+                  <div>
+                    <div style="font-weight: 600; color: #1e293b; font-size: 14px;">Contact</div>
+                    <div style="color: #64748b; font-size: 12px;">${user.contactNumber}</div>
+                  </div>
+                </div>
+                <button 
+                  onclick="showDetails(${users.findIndex(u => u.userId === user.userId)})" 
+                  style="
+                    background: linear-gradient(135deg, #667eea, #764ba2); 
+                    color: white; 
+                    border: none; 
+                    padding: 14px 20px; 
+                    border-radius: 12px; 
+                    margin-top: 16px; 
+                    cursor: pointer; 
+                    font-weight: 600;
+                    font-size: 14px;
+                    width: 100%;
+                    transition: all 0.3s ease;
+                    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+                    position: relative;
+                    overflow: hidden;
+                  "
+                  onmouseover="
+                    this.style.transform='translateY(-2px)'; 
+                    this.style.boxShadow='0 8px 20px rgba(102, 126, 234, 0.4)';
+                  "
+                  onmouseout="
+                    this.style.transform='translateY(0)'; 
+                    this.style.boxShadow='0 4px 12px rgba(102, 126, 234, 0.3)';
+                  "
+                >
+                  <span style="position: relative; z-index: 1;">View Full Details</span>
+                </button>
+              </div>
+            </div>
+          `,
+        };
+      }
+    });
 
     return `
     <!DOCTYPE html>
@@ -317,20 +465,39 @@ const MapScreen = ({ navigation }) => {
           right: 12px !important;
           transition: all 0.2s ease !important;
         }
-        // .leaflet-popup-close-button:hover {
-        //   background: rgba(0,0,0,0.4) !important;
-        //   transform: scale(1.1) !important;
-        // }
         .custom-marker {
           background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
           border: 4px solid white;
           border-radius: 50%;
           box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
           transition: all 0.3s ease;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: white;
+          font-weight: bold;
+          font-size: 12px;
         }
         .custom-marker:hover {
           transform: scale(1.2);
           box-shadow: 0 12px 30px rgba(102, 126, 234, 0.6);
+        }
+        .cluster-marker {
+          background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+          border: 4px solid white;
+          border-radius: 50%;
+          box-shadow: 0 8px 20px rgba(245, 158, 11, 0.4);
+          transition: all 0.3s ease;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: white;
+          font-weight: bold;
+          font-size: 14px;
+        }
+        .cluster-marker:hover {
+          transform: scale(1.1);
+          box-shadow: 0 12px 30px rgba(245, 158, 11, 0.6);
         }
         .leaflet-control-zoom {
           border: none !important;
@@ -371,26 +538,30 @@ const MapScreen = ({ navigation }) => {
           position: 'bottomright'
         }).addTo(map);
         
-        var markers = ${JSON.stringify(markers)};
-        
-        // Enhanced custom marker icon
-        var customIcon = L.divIcon({
-          className: 'custom-marker',
-          iconSize: [16, 16],
-          iconAnchor: [8, 8],
-          popupAnchor: [0, -8]
-        });
+        var markers = ${JSON.stringify(clusterMarkers)};
         
         if (markers.length > 0) {
           var bounds = [];
           var markerGroup = L.featureGroup();
           
           markers.forEach(function(marker, index) {
+            var iconHtml = marker.isCluster 
+              ? '<div class="cluster-marker" style="width: 40px; height: 40px;">' + marker.count + '</div>'
+              : '<div class="custom-marker" style="width: 16px; height: 16px;"></div>';
+            
+            var customIcon = L.divIcon({
+              className: '',
+              html: iconHtml,
+              iconSize: marker.isCluster ? [40, 40] : [16, 16],
+              iconAnchor: marker.isCluster ? [20, 20] : [8, 8],
+              popupAnchor: [0, marker.isCluster ? -20 : -8]
+            });
+            
             var leafletMarker = L.marker([marker.lat, marker.lng], {
               icon: customIcon,
               riseOnHover: true
             }).bindPopup(marker.popup, {
-              maxWidth: 320,
+              maxWidth: marker.isCluster ? 380 : 320,
               className: 'custom-popup',
               closeButton: true,
               autoClose: false,

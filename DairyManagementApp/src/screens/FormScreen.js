@@ -13,9 +13,16 @@ import {
   Dimensions,
   Platform,
 } from 'react-native';
-import { ChevronLeft, Send, Zap, Shield } from 'lucide-react-native';
+import { ChevronLeft, Send, Zap, Shield, Edit, Plus } from 'lucide-react-native';
 import LinearGradient from 'react-native-linear-gradient';
-import { submitCowInfo, submitBuffaloInfo } from '../api';
+import { 
+  submitCowInfo, 
+  submitBuffaloInfo, 
+  getCowsByUserId, 
+  getBuffaloesByUserId,
+  updateCowInfo,
+  updateBuffaloInfo
+} from '../api';
 
 const { width } = Dimensions.get('window');
 
@@ -25,7 +32,7 @@ const FormScreen = ({ route, navigation }) => {
   // Animation refs
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
-  const progressAnim = useRef(new Animated.Value(0)).current;
+
 
   if (!userId) {
     Alert.alert('Error', 'User ID is missing. Please log in again.');
@@ -34,6 +41,11 @@ const FormScreen = ({ route, navigation }) => {
   }
 
   const [activeTab, setActiveTab] = useState('cow');
+  const [loading, setLoading] = useState(true);
+  const [existingCowData, setExistingCowData] = useState(null);
+  const [existingBuffaloData, setExistingBuffaloData] = useState(null);
+  const [isEditMode, setIsEditMode] = useState(false);
+
   const [cowData, setCowData] = useState({
     total: '',
     milking: '',
@@ -75,31 +87,69 @@ const FormScreen = ({ route, navigation }) => {
         useNativeDriver: true,
       }),
     ]).start();
+
+    loadExistingData();
   }, []);
 
-  useEffect(() => {
-    // Update progress based on filled fields
-    const cowFields = [cowData.total, cowData.milking, cowData.dry, cowData.calvesHeifers];
-    const buffaloFields = [buffaloData.total, buffaloData.milking, buffaloData.dry, buffaloData.calvesHeifers];
-    const allFields = [...cowFields, ...buffaloFields];
-    const filledFields = allFields.filter(field => field.trim() !== '').length;
-    const progress = allFields.length > 0 ? filledFields / allFields.length : 0;
+  const loadExistingData = async () => {
+    try {
+      setLoading(true);
+      
+      // Load existing cow data
+      try {
+        const cowResponse = await getCowsByUserId(userId);
+        if (cowResponse.data && cowResponse.data.length > 0) {
+          const existingCow = cowResponse.data[0];
+          setExistingCowData(existingCow);
+          
+          // Populate cow form with existing data
+          setCowData({
+            total: existingCow.total?.toString() || '',
+            milking: existingCow.milking?.toString() || '',
+            dry: existingCow.dry?.toString() || '',
+            calvesHeifers: existingCow.calvesHeifers?.toString() || '',
+            breeds: [
+              { name: 'HF', count: existingCow.breeds?.HF?.toString() || '' },
+              { name: 'Jersey', count: existingCow.breeds?.Jersey?.toString() || '' },
+              { name: 'Sahiwal', count: existingCow.breeds?.Sahiwal?.toString() || '' },
+            ],
+          });
+          setIsEditMode(true);
+        }
+      } catch (error) {
+        console.log('No existing cow data found');
+      }
 
-    Animated.timing(progressAnim, {
-      toValue: progress,
-      duration: 300,
-      useNativeDriver: false,
-    }).start();
-  }, [cowData, buffaloData]);
-
-  useEffect(() => {
-    const listenerId = progressAnim.addListener(({ value }) => {
-      setProgressPercentage(`${Math.round(value * 100)}%`);
-    });
-    return () => {
-      progressAnim.removeListener(listenerId);
-    };
-  }, [progressAnim]);
+      // Load existing buffalo data
+      try {
+        const buffaloResponse = await getBuffaloesByUserId(userId);
+        if (buffaloResponse.data && buffaloResponse.data.length > 0) {
+          const existingBuffalo = buffaloResponse.data[0];
+          setExistingBuffaloData(existingBuffalo);
+          
+          // Populate buffalo form with existing data
+          setBuffaloData({
+            total: existingBuffalo.total?.toString() || '',
+            milking: existingBuffalo.milking?.toString() || '',
+            dry: existingBuffalo.dry?.toString() || '',
+            calvesHeifers: existingBuffalo.calvesHeifers?.toString() || '',
+            breeds: [
+              { name: 'Murrah', count: existingBuffalo.breeds?.Murrah?.toString() || '' },
+              { name: 'Mehsana', count: existingBuffalo.breeds?.Mehsana?.toString() || '' },
+              { name: 'Jaffarabadi', count: existingBuffalo.breeds?.Jaffarabadi?.toString() || '' },
+            ],
+          });
+          setIsEditMode(true);
+        }
+      } catch (error) {
+        console.log('No existing buffalo data found');
+      }
+    } catch (error) {
+      console.error('Error loading existing data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleCowChange = (field, value) => setCowData({ ...cowData, [field]: value });
   const handleBuffaloChange = (field, value) => setBuffaloData({ ...buffaloData, [field]: value });
@@ -137,29 +187,57 @@ const FormScreen = ({ route, navigation }) => {
         return acc;
       }, {});
 
-    const cowPayload = {
-      userId,
-      total: parseInt(cowData.total, 10) || 0,
-      milking: parseInt(cowData.milking, 10) || 0,
-      dry: parseInt(cowData.dry, 10) || 0,
-      calvesHeifers: parseInt(cowData.calvesHeifers, 10) || 0,
-      breeds: formatBreeds(cowData.breeds),
-    };
-
-    const buffaloPayload = {
-      userId,
-      total: parseInt(buffaloData.total, 10) || 0,
-      milking: parseInt(buffaloData.milking, 10) || 0,
-      dry: parseInt(buffaloData.dry, 10) || 0,
-      calvesHeifers: parseInt(buffaloData.calvesHeifers, 10) || 0,
-      breeds: formatBreeds(buffaloData.breeds),
-    };
-
     try {
-      await Promise.all([submitCowInfo(cowPayload), submitBuffaloInfo(buffaloPayload)]);
-      Alert.alert('Success', 'Livestock data submitted successfully!', [
-        { text: 'OK', onPress: () => navigation.goBack() },
-      ]);
+      const promises = [];
+
+      // Handle cow data
+      if (cowData.total || cowData.milking || cowData.dry || cowData.calvesHeifers) {
+        const cowPayload = {
+          total: parseInt(cowData.total, 10) || 0,
+          milking: parseInt(cowData.milking, 10) || 0,
+          dry: parseInt(cowData.dry, 10) || 0,
+          calvesHeifers: parseInt(cowData.calvesHeifers, 10) || 0,
+          breeds: formatBreeds(cowData.breeds),
+        };
+
+        if (existingCowData) {
+          // Update existing cow data
+          promises.push(updateCowInfo(existingCowData.id, cowPayload));
+        } else {
+          // Create new cow data
+          promises.push(submitCowInfo({ userId, ...cowPayload }));
+        }
+      }
+
+      // Handle buffalo data
+      if (buffaloData.total || buffaloData.milking || buffaloData.dry || buffaloData.calvesHeifers) {
+        const buffaloPayload = {
+          total: parseInt(buffaloData.total, 10) || 0,
+          milking: parseInt(buffaloData.milking, 10) || 0,
+          dry: parseInt(buffaloData.dry, 10) || 0,
+          calvesHeifers: parseInt(buffaloData.calvesHeifers, 10) || 0,
+          breeds: formatBreeds(buffaloData.breeds),
+        };
+
+        if (existingBuffaloData) {
+          // Update existing buffalo data
+          promises.push(updateBuffaloInfo(existingBuffaloData.id, buffaloPayload));
+        } else {
+          // Create new buffalo data
+          promises.push(submitBuffaloInfo({ userId, ...buffaloPayload }));
+        }
+      }
+
+      if (promises.length > 0) {
+        await Promise.all(promises);
+        Alert.alert(
+          'Success', 
+          isEditMode ? 'Livestock data updated successfully!' : 'Livestock data submitted successfully!',
+          [{ text: 'OK', onPress: () => navigation.goBack() }]
+        );
+      } else {
+        Alert.alert('Error', 'Please fill in at least some data before submitting.');
+      }
     } catch (error) {
       console.error('Submission Error:', error.response?.data || error.message);
       Alert.alert('Error', 'Failed to submit data. Please try again.');
@@ -253,6 +331,17 @@ const FormScreen = ({ route, navigation }) => {
     </TouchableOpacity>
   );
 
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Loading existing data...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
@@ -274,34 +363,16 @@ const FormScreen = ({ route, navigation }) => {
         >
           <ChevronLeft color="#1E293B" size={28} strokeWidth={2} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Add Livestock Data</Text>
-        <View style={styles.headerRight} />
-      </Animated.View>
-
-      {/* Progress Bar */}
-      <Animated.View
-        style={[
-          styles.progressContainer,
-          { opacity: fadeAnim },
-        ]}
-      >
-        <Text style={styles.progressText}>Form Progress</Text>
-        <View style={styles.progressBarContainer}>
-          <Animated.View
-            style={[
-              styles.progressBar,
-              {
-                width: progressAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: ['0%', '100%'],
-                }),
-              },
-            ]}
-          />
-        </View>
-        <Text style={styles.progressPercentage}>
-          {progressPercentage}
+        <Text style={styles.headerTitle}>
+          {isEditMode ? 'Update Livestock Data' : 'Add Livestock Data'}
         </Text>
+        <View style={styles.headerRight}>
+          {isEditMode && (
+            <View style={styles.editModeIndicator}>
+              <Edit color="#8B5CF6" size={20} strokeWidth={2} />
+            </View>
+          )}
+        </View>
       </Animated.View>
 
       {/* Tab Switcher */}
@@ -346,7 +417,9 @@ const FormScreen = ({ route, navigation }) => {
             <View>
               <View style={styles.sectionHeader}>
                 <Zap color="#8B5CF6" size={24} strokeWidth={2} />
-                <Text style={styles.sectionTitle}>Cow Ownership Details</Text>
+                <Text style={styles.sectionTitle}>
+                  {existingCowData ? 'Update Cow Details' : 'Cow Ownership Details'}
+                </Text>
               </View>
               
               <AnimatedInput
@@ -390,7 +463,9 @@ const FormScreen = ({ route, navigation }) => {
             <View>
               <View style={styles.sectionHeader}>
                 <Shield color="#8B5CF6" size={24} strokeWidth={2} />
-                <Text style={styles.sectionTitle}>Buffalo Ownership Details</Text>
+                <Text style={styles.sectionTitle}>
+                  {existingBuffaloData ? 'Update Buffalo Details' : 'Buffalo Ownership Details'}
+                </Text>
               </View>
               
               <AnimatedInput
@@ -455,9 +530,12 @@ const FormScreen = ({ route, navigation }) => {
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
           >
-            <Send color="#fff" size={20} strokeWidth={2} />
+            {isEditMode ? <Edit color="#fff" size={20} strokeWidth={2} /> : <Send color="#fff" size={20} strokeWidth={2} />}
             <Text style={styles.submitButtonText}>
-              {isSubmitting ? 'Submitting...' : 'Submit All Data'}
+              {isSubmitting 
+                ? (isEditMode ? 'Updating...' : 'Submitting...') 
+                : (isEditMode ? 'Update Data' : 'Submit All Data')
+              }
             </Text>
           </LinearGradient>
         </TouchableOpacity>
@@ -470,6 +548,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F8FAFC',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#64748B',
+    fontWeight: '500',
   },
   header: {
     flexDirection: 'row',
@@ -493,37 +581,12 @@ const styles = StyleSheet.create({
   },
   headerRight: {
     width: 44,
+    alignItems: 'flex-end',
   },
-  progressContainer: {
-    backgroundColor: '#fff',
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
-  },
-  progressText: {
-    fontSize: 12,
-    color: '#64748B',
-    marginBottom: 8,
-    fontWeight: '500',
-  },
-  progressBarContainer: {
-    height: 4,
-    backgroundColor: '#E2E8F0',
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  progressBar: {
-    height: '100%',
-    backgroundColor: '#10B981',
-    borderRadius: 2,
-  },
-  progressPercentage: {
-    fontSize: 10,
-    color: '#64748B',
-    marginTop: 4,
-    textAlign: 'right',
-    fontWeight: '600',
+  editModeIndicator: {
+    backgroundColor: '#F3E8FF',
+    borderRadius: 8,
+    padding: 6,
   },
   tabContainer: {
     flexDirection: 'row',

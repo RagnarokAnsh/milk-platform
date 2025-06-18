@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import Toast from 'react-native-toast-message';
 import {
   View,
   Text,
@@ -10,7 +11,7 @@ import {
   ScrollView,
   Platform,
   ActivityIndicator,
-  Alert,
+
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { ChevronLeft, Building, Archive, Syringe, Droplets, Wind, Clipboard, Milk, Leaf } from 'lucide-react-native';
@@ -150,14 +151,12 @@ const ScoreScreen = ({ route, navigation }) => {
       setScoreCategories(categories);
     } catch (error) {
       console.error('Failed to fetch score categories:', error);
-      Alert.alert(
-        'Error',
-        'Failed to load assessment categories. Please check your connection and try again.',
-        [
-          { text: 'Retry', onPress: fetchScoreCategories },
-          { text: 'Cancel', style: 'cancel' }
-        ]
-      );
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to load assessment categories. Please try again.',
+        onHide: () => navigation.goBack(),
+      });
     } finally {
       setLoading(false);
     }

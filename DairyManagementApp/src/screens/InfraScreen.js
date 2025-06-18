@@ -32,9 +32,12 @@ import {
   Shield,
   Trash2,
   Send,
+  Edit,
 } from 'lucide-react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { launchImageLibrary, launchCamera } from 'react-native-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getUserSubsectionScores } from '../api';
 
 const { width, height } = Dimensions.get('window');
 
@@ -47,6 +50,7 @@ const InfraScreen = ({ navigation, route }) => {
   const [uploadedImages, setUploadedImages] = useState({});
   const [scores, setScores] = useState({});
   const [submitting, setSubmitting] = useState({});
+  const [existingScores, setExistingScores] = useState({});
   
   // Store dynamic score descriptions for each subsection
   const [scoreDescriptions, setScoreDescriptions] = useState({});
@@ -55,15 +59,120 @@ const InfraScreen = ({ navigation, route }) => {
   // Animation values - simplified for smoother performance
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
+  // Keys for AsyncStorage
+  const SCORES_STORAGE_KEY = `scores_${userId}_${sectionId}`;
+  const EXISTING_SCORES_STORAGE_KEY = `existing_scores_${userId}_${sectionId}`;
+  const IMAGES_STORAGE_KEY = `images_${userId}_${sectionId}`;
+
   useEffect(() => {
-    fetchSubsections();
+    initializeScreen();
+  }, [sectionId, userId]);
+
+  const initializeScreen = async () => {
+    await Promise.all([
+      loadPersistedData(),
+      fetchSubsections(),
+      loadExistingScores()
+    ]);
+    
     // Simplified initial animation
     Animated.timing(fadeAnim, {
       toValue: 1,
       duration: 300,
       useNativeDriver: true,
     }).start();
-  }, [sectionId]);
+  };
+
+  // Load persisted data from AsyncStorage
+  const loadPersistedData = async () => {
+    try {
+      const [persistedScores, persistedExistingScores, persistedImages] = await Promise.all([
+        AsyncStorage.getItem(SCORES_STORAGE_KEY),
+        AsyncStorage.getItem(EXISTING_SCORES_STORAGE_KEY),
+        AsyncStorage.getItem(IMAGES_STORAGE_KEY),
+      ]);
+
+      if (persistedScores) {
+        const parsedScores = JSON.parse(persistedScores);
+        setScores(parsedScores);
+        console.log('Loaded persisted scores:', parsedScores);
+      }
+
+      if (persistedExistingScores) {
+        const parsedExistingScores = JSON.parse(persistedExistingScores);
+        setExistingScores(parsedExistingScores);
+        console.log('Loaded persisted existing scores:', parsedExistingScores);
+      }
+
+      if (persistedImages) {
+        const parsedImages = JSON.parse(persistedImages);
+        setUploadedImages(parsedImages);
+        console.log('Loaded persisted images:', parsedImages);
+      }
+    } catch (error) {
+      console.error('Error loading persisted data:', error);
+    }
+  };
+
+  // Save data to AsyncStorage
+  const persistData = async (key, data) => {
+    try {
+      await AsyncStorage.setItem(key, JSON.stringify(data));
+    } catch (error) {
+      console.error(`Error persisting data for key ${key}:`, error);
+    }
+  };
+
+  const loadExistingScores = async () => {
+    if (!userId || !sectionId) {
+      console.log('Missing userId or sectionId for loading existing scores');
+      return;
+    }
+    
+    try {
+      console.log(`Loading existing scores for userId: ${userId}, sectionId: ${sectionId}`);
+      const response = await getUserSubsectionScores(userId, sectionId);
+      
+      console.log('API Response:', response);
+      
+      if (response && response.data) {
+        let scoresData = response.data;
+        
+        // Handle different response structures
+        if (Array.isArray(scoresData) && scoresData.length > 0) {
+          const existingScoresMap = {};
+          const scoresMap = {};
+          
+          scoresData.forEach(score => {
+            const subsectionId = score.subsectionId || score.subsection_id;
+            const scoreValue = score.scoreValue || score.score_value || score.score;
+            
+            if (subsectionId && scoreValue) {
+              existingScoresMap[subsectionId] = scoreValue;
+              scoresMap[subsectionId] = scoreValue;
+            }
+          });
+          
+          console.log('Processed existing scores:', existingScoresMap);
+          console.log('Processed scores:', scoresMap);
+          
+          setExistingScores(existingScoresMap);
+          setScores(prev => ({ ...prev, ...scoresMap }));
+          
+          // Persist the loaded data
+          await persistData(EXISTING_SCORES_STORAGE_KEY, existingScoresMap);
+          await persistData(SCORES_STORAGE_KEY, { ...scores, ...scoresMap });
+        } else {
+          console.log('No existing scores found in response');
+        }
+      } else {
+        console.log('No data in API response');
+      }
+    } catch (error) {
+      console.error('Error loading existing scores:', error);
+      // Don't show error to user as this might be expected (no previous scores)
+    }
+  };
 
   const fetchSubsections = async () => {
     try {
@@ -73,6 +182,7 @@ const InfraScreen = ({ navigation, route }) => {
       
       if (response.ok) {
         setSubsections(data);
+        console.log('Fetched subsections:', data.length);
       } else {
         throw new Error('Failed to fetch subsections');
       }
@@ -206,12 +316,21 @@ const InfraScreen = ({ navigation, route }) => {
       });
 
       if (response.ok) {
-        Alert.alert('Success', 'Score submitted successfully!');
+        const isUpdate = existingScores[subsectionId] !== undefined;
+        Alert.alert('Success', isUpdate ? 'Score updated successfully!' : 'Score submitted successfully!');
+        
         // Update local scores state
-        setScores(prev => ({
-          ...prev,
-          [subsectionId]: scoreValue
-        }));
+        const newScores = { ...scores, [subsectionId]: scoreValue };
+        const newExistingScores = { ...existingScores, [subsectionId]: scoreValue };
+        
+        setScores(newScores);
+        setExistingScores(newExistingScores);
+        
+        // Persist the updated scores
+        await persistData(SCORES_STORAGE_KEY, newScores);
+        await persistData(EXISTING_SCORES_STORAGE_KEY, newExistingScores);
+        
+        console.log('Score submitted and persisted:', { subsectionId, scoreValue });
       } else {
         const errorData = await response.json();
         throw new Error(errorData.message || 'Failed to submit score');
@@ -298,7 +417,7 @@ const InfraScreen = ({ navigation, route }) => {
       saveToPhotos: true,
     };
 
-    launchCamera(options, (response) => {
+    launchCamera(options, async (response) => {
       if (response.didCancel) {
         console.log('User cancelled camera');
         return;
@@ -311,295 +430,322 @@ const InfraScreen = ({ navigation, route }) => {
       if (response.assets && response.assets[0]) {
         const imageUri = response.assets[0].uri;
         
-        // Update uploaded images immediately
-        setUploadedImages(prev => ({
-          ...prev,
-          [subsectionId]: imageUri
-        }));
+        // Update uploaded images immediately and persist
+        const newImages = { ...uploadedImages, [subsectionId]: imageUri };
+        setUploadedImages(newImages);
+        await persistData(IMAGES_STORAGE_KEY, newImages);
+        
+        console.log('Image uploaded and persisted for subsection:', subsectionId);
       }
     });
   };
 
   // Helper function to get default description by score value
-const getDefaultScoreDescription = (scoreValue) => {
-  switch (scoreValue) {
-    case 1: return 'No description available.';
-    case 2: return 'No description available.';
-    case 3: return 'No description available.';
-    default: return 'No description available';
-  }
-};
-
-const ScoreSelector = ({ subsection }) => {
-  const [selectedScore, setSelectedScore] = useState(scores[subsection.id] || null);
-  const isSubmitting = submitting[subsection.id];
-  
-  // Use default descriptions if API data isn't loaded yet
-  const subsectionDescriptions = scoreDescriptions[subsection.id] || getDefaultScoreDescriptions();
-  const isLoadingDescriptions = loadingDescriptions[subsection.id];
-
-  const handleScoreSelect = (score) => {
-    setSelectedScore(score);
-  };
-
-  const handleSubmit = () => {
-    if (selectedScore) {
-      submitScore(subsection.id, selectedScore);
-    } else {
-      Alert.alert('Error', 'Please select a score before submitting.');
+  const getDefaultScoreDescription = (scoreValue) => {
+    switch (scoreValue) {
+      case 1: return 'No description available.';
+      case 2: return 'No description available.';
+      case 3: return 'No description available.';
+      default: return 'No description available';
     }
   };
 
-  if (isLoadingDescriptions) {
+  const ScoreSelector = ({ subsection }) => {
+    const [selectedScore, setSelectedScore] = useState(scores[subsection.id] || null);
+    const isSubmitting = submitting[subsection.id];
+    const hasExistingScore = existingScores[subsection.id] !== undefined;
+    
+    // Update selected score when scores state changes
+    useEffect(() => {
+      setSelectedScore(scores[subsection.id] || null);
+    }, [scores, subsection.id]);
+    
+    // Use default descriptions if API data isn't loaded yet
+    const subsectionDescriptions = scoreDescriptions[subsection.id] || getDefaultScoreDescriptions();
+    const isLoadingDescriptions = loadingDescriptions[subsection.id];
+
+    const handleScoreSelect = (score) => {
+      setSelectedScore(score);
+    };
+
+    const handleSubmit = () => {
+      if (selectedScore) {
+        submitScore(subsection.id, selectedScore);
+      } else {
+        Alert.alert('Error', 'Please select a score before submitting.');
+      }
+    };
+
+    if (isLoadingDescriptions) {
+      return (
+        <View style={styles.scoreSelector}>
+          <View style={styles.loadingDescriptions}>
+            <ActivityIndicator size="small" color="#8B5CF6" />
+            <Text style={styles.loadingDescriptionsText}>Loading score descriptions...</Text>
+          </View>
+        </View>
+      );
+    }
+
     return (
       <View style={styles.scoreSelector}>
-        <View style={styles.loadingDescriptions}>
-          <ActivityIndicator size="small" color="#8B5CF6" />
-          <Text style={styles.loadingDescriptionsText}>Loading score descriptions...</Text>
-        </View>
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.scoreSelector}>
-      <Text style={styles.scoreSelectorTitle}>Rate this category:</Text>
-      
-      {[1, 2, 3].map((score) => {
-        const isSelected = selectedScore === score;
-        const scoreInfo = subsectionDescriptions[score];
-        
-        // Ensure we always have the correct icon, text, and color
-        const ScoreIcon = scoreInfo?.icon || getScoreIconByValue(score);
-        const scoreText = scoreInfo?.text || getScoreTextByValue(score);
-        const scoreColor = scoreInfo?.color || getScoreColorByValue(score);
-        const scoreDescription = scoreInfo?.description || getDefaultScoreDescription(score);
-        
-        return (
-          <TouchableOpacity
-            key={score}
-            style={[
-              styles.scoreOption,
-              isSelected && { 
-                backgroundColor: scoreColor + '20', 
-                borderColor: scoreColor 
-              }
-            ]}
-            onPress={() => handleScoreSelect(score)}
-            activeOpacity={0.7}
-          >
-            <View style={styles.scoreOptionHeader}>
-              <View style={[styles.scoreOptionIcon, { backgroundColor: scoreColor }]}>
-                <ScoreIcon color="#fff" size={20} strokeWidth={2} />
-              </View>
-              <View style={styles.scoreOptionInfo}>
-                <Text style={[
-                  styles.scoreOptionText, 
-                  isSelected && { color: scoreColor }
-                ]}>
-                  {scoreText}
-                </Text>
-                <Text style={styles.scoreOptionValue}>Score: {score}</Text>
-              </View>
-              <View style={[
-                styles.radioButton, 
-                isSelected && { backgroundColor: scoreColor }
-              ]}>
-                {isSelected && <View style={styles.radioButtonInner} />}
-              </View>
+        <View style={styles.scoreSelectorHeader}>
+          <Text style={styles.scoreSelectorTitle}>Rate this category:</Text>
+          {hasExistingScore && (
+            <View style={styles.existingScoreIndicator}>
+              <Edit color="#8B5CF6" size={16} strokeWidth={2} />
+              <Text style={styles.existingScoreText}>Previously scored</Text>
             </View>
-            <Text style={styles.scoreOptionDescription}>
-              {scoreDescription}
-            </Text>
-          </TouchableOpacity>
-        );
-      })}
-
-      <TouchableOpacity
-        style={[
-          styles.submitButton,
-          (!selectedScore || isSubmitting) && styles.submitButtonDisabled
-        ]}
-        onPress={handleSubmit}
-        disabled={!selectedScore || isSubmitting}
-        activeOpacity={0.8}
-      >
-        <LinearGradient
-          colors={
-            selectedScore && !isSubmitting 
-              ? ['#8B5CF6', '#7C3AED'] 
-              : ['#9CA3AF', '#6B7280']
-          }
-          style={styles.submitGradient}
-        >
-          {isSubmitting ? (
-            <ActivityIndicator color="#fff" size="small" />
-          ) : (
-            <>
-              <Send color="#fff" size={20} strokeWidth={2} />
-              <Text style={styles.submitButtonText}>Submit Score</Text>
-            </>
           )}
-        </LinearGradient>
-      </TouchableOpacity>
-    </View>
-  );
-};
+        </View>
+        
+        {[1, 2, 3].map((score) => {
+          const isSelected = selectedScore === score;
+          const scoreInfo = subsectionDescriptions[score];
+          
+          // Ensure we always have the correct icon, text, and color
+          const ScoreIcon = scoreInfo?.icon || getScoreIconByValue(score);
+          const scoreText = scoreInfo?.text || getScoreTextByValue(score);
+          const scoreColor = scoreInfo?.color || getScoreColorByValue(score);
+          const scoreDescription = scoreInfo?.description || getDefaultScoreDescription(score);
+          
+          return (
+            <TouchableOpacity
+              key={score}
+              style={[
+                styles.scoreOption,
+                isSelected && { 
+                  backgroundColor: scoreColor + '20', 
+                  borderColor: scoreColor 
+                }
+              ]}
+              onPress={() => handleScoreSelect(score)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.scoreOptionHeader}>
+                <View style={[styles.scoreOptionIcon, { backgroundColor: scoreColor }]}>
+                  <ScoreIcon color="#fff" size={20} strokeWidth={2} />
+                </View>
+                <View style={styles.scoreOptionInfo}>
+                  <Text style={[
+                    styles.scoreOptionText, 
+                    isSelected && { color: scoreColor }
+                  ]}>
+                    {scoreText}
+                  </Text>
+                  <Text style={styles.scoreOptionValue}>Score: {score}</Text>
+                </View>
+                <View style={[
+                  styles.radioButton, 
+                  isSelected && { backgroundColor: scoreColor }
+                ]}>
+                  {isSelected && <View style={styles.radioButtonInner} />}
+                </View>
+              </View>
+              <Text style={styles.scoreOptionDescription}>
+                {scoreDescription}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
 
-  const CategoryCard = ({ subsection, index }) => {
-    const isExpanded = expandedSections[subsection.id];
-    const hasImage = uploadedImages[subsection.id];
-    const score = scores[subsection.id];
-    const SubsectionIcon = getIconForSubsection(subsection.name);
-    const ScoreIcon = getScoreIcon(score);
-
-    return (
-      <View style={styles.categoryCard}>
         <TouchableOpacity
-          style={styles.categoryHeader}
-          onPress={() => toggleSection(subsection.id)}
+          style={[
+            styles.submitButton,
+            (!selectedScore || isSubmitting) && styles.submitButtonDisabled
+          ]}
+          onPress={handleSubmit}
+          disabled={!selectedScore || isSubmitting}
           activeOpacity={0.8}
         >
           <LinearGradient
-            colors={['#334155', '#475569']}
-            style={styles.categoryHeaderGradient}
+            colors={
+              selectedScore && !isSubmitting 
+                ? ['#8B5CF6', '#7C3AED'] 
+                : ['#9CA3AF', '#6B7280']
+            }
+            style={styles.submitGradient}
           >
-            <View style={styles.categoryHeaderContent}>
-              <View style={styles.categoryLeft}>
-                <View style={styles.categoryIcon}>
-                  <SubsectionIcon color="#fff" size={20} strokeWidth={2} />
-                </View>
-                <View style={styles.categoryInfo}>
-                  <Text style={styles.categoryTitle}>
-                    {subsection.name}
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.categoryRight}>
-                {score && (
-                  <View style={[styles.scoreIndicator, { backgroundColor: getScoreColor(score) }]}>
-                    <ScoreIcon color="#fff" size={16} strokeWidth={2} />
-                  </View>
-                )}
-                <View style={styles.chevronIcon}>
-                  {isExpanded ? (
-                    <ChevronUp color="#fff" size={20} strokeWidth={2} />
-                  ) : (
-                    <ChevronDown color="#fff" size={20} strokeWidth={2} />
-                  )}
-                </View>
-              </View>
-            </View>
+            {isSubmitting ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <>
+                {hasExistingScore ? <Edit color="#fff" size={20} strokeWidth={2} /> : <Send color="#fff" size={20} strokeWidth={2} />}
+                <Text style={styles.submitButtonText}>
+                  {hasExistingScore ? 'Update Score' : 'Submit Score'}
+                </Text>
+              </>
+            )}
           </LinearGradient>
         </TouchableOpacity>
-
-        {isExpanded && (
-          <View style={styles.categoryContent}>
-            {subsection.description && (
-              <Text style={styles.categoryDescription}>{subsection.description}</Text>
-            )}
-
-            <View style={styles.uploadSection}>
-              {hasImage ? (
-                <View style={styles.imageContainer}>
-                  <Image source={{ uri: hasImage }} style={styles.uploadedImage} />
-                  <View style={styles.imageOverlay}>
-                    <TouchableOpacity
-                      style={styles.retakeButton}
-                      onPress={() => handleImageUpload(subsection)}
-                    >
-                      <Camera color="#fff" size={16} strokeWidth={2} />
-                      <Text style={styles.retakeText}>Retake</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ) : (
-                <TouchableOpacity
-                  style={styles.uploadButton}
-                  onPress={() => handleImageUpload(subsection)}
-                  activeOpacity={0.8}
-                >
-                  <LinearGradient
-                    colors={['#8B5CF6', '#7C3AED']}
-                    style={styles.uploadGradient}
-                  >
-                    <Upload color="#fff" size={24} strokeWidth={2} />
-                    <Text style={styles.uploadText}>Upload Photo</Text>
-                    <Text style={styles.uploadSubtext}>Take a photo to assess this category</Text>
-                  </LinearGradient>
-                </TouchableOpacity>
-              )}
-
-              <ScoreSelector subsection={subsection} />
-            </View>
-          </View>
-        )}
       </View>
     );
   };
 
-  if (loading) {
+    const CategoryCard = ({ subsection, index }) => {
+      const isExpanded = expandedSections[subsection.id];
+      const hasImage = uploadedImages[subsection.id];
+      const score = scores[subsection.id];
+      const hasExistingScore = existingScores[subsection.id] !== undefined;
+      const SubsectionIcon = getIconForSubsection(subsection.name);
+      const ScoreIcon = getScoreIcon(score);
+
+      return (
+        <View style={styles.categoryCard}>
+          <TouchableOpacity
+            style={styles.categoryHeader}
+            onPress={() => toggleSection(subsection.id)}
+            activeOpacity={0.8}
+          >
+            <LinearGradient
+              colors={['#334155', '#475569']}
+              style={styles.categoryHeaderGradient}
+            >
+              <View style={styles.categoryHeaderContent}>
+                <View style={styles.categoryLeft}>
+                  <View style={styles.categoryIcon}>
+                    <SubsectionIcon color="#fff" size={20} strokeWidth={2} />
+                  </View>
+                  <View style={styles.categoryInfo}>
+                    <Text style={styles.categoryTitle}>
+                      {subsection.name}
+                    </Text>
+                    {hasExistingScore && (
+                      <Text style={styles.categorySubtitle}>Previously assessed</Text>
+                    )}
+                  </View>
+                </View>
+                <View style={styles.categoryRight}>
+                  {score && (
+                    <View style={[styles.scoreIndicator, { backgroundColor: getScoreColor(score) }]}>
+                      <ScoreIcon color="#fff" size={16} strokeWidth={2} />
+                    </View>
+                  )}
+                  <View style={styles.chevronIcon}>
+                    {isExpanded ? (
+                      <ChevronUp color="#fff" size={20} strokeWidth={2} />
+                    ) : (
+                      <ChevronDown color="#fff" size={20} strokeWidth={2} />
+                    )}
+                  </View>
+                </View>
+              </View>
+            </LinearGradient>
+          </TouchableOpacity>
+
+          {isExpanded && (
+            <View style={styles.categoryContent}>
+              {subsection.description && (
+                <Text style={styles.categoryDescription}>{subsection.description}</Text>
+              )}
+
+              <View style={styles.uploadSection}>
+                {hasImage ? (
+                  <View style={styles.imageContainer}>
+                    <Image source={{ uri: hasImage }} style={styles.uploadedImage} />
+                    <View style={styles.imageOverlay}>
+                      <TouchableOpacity
+                        style={styles.retakeButton}
+                        onPress={() => handleImageUpload(subsection)}
+                      >
+                        <Camera color="#fff" size={16} strokeWidth={2} />
+                        <Text style={styles.retakeText}>Retake</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.uploadButton}
+                    onPress={() => handleImageUpload(subsection)}
+                    activeOpacity={0.8}
+                  >
+                    <LinearGradient
+                      colors={['#8B5CF6', '#7C3AED']}
+                      style={styles.uploadGradient}
+                    >
+                      <Upload color="#fff" size={24} strokeWidth={2} />
+                      <Text style={styles.uploadText}>Upload Photo</Text>
+                      <Text style={styles.uploadSubtext}>Take a photo to assess this category</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                )}
+
+                <ScoreSelector subsection={subsection} />
+              </View>
+            </View>
+          )}
+        </View>
+      );
+    };
+
+    if (loading) {
+      return (
+        <SafeAreaView style={styles.container}>
+          <StatusBar barStyle="light-content" backgroundColor="#0F172A" />
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#8B5CF6" />
+            <Text style={styles.loadingText}>Loading assessment categories...</Text>
+          </View>
+        </SafeAreaView>
+      );
+    }
+
     return (
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="#0F172A" />
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#8B5CF6" />
-          <Text style={styles.loadingText}>Loading assessment categories...</Text>
-        </View>
+
+        {/* Header */}
+        <Animated.View
+          style={[
+            styles.header,
+            {
+              opacity: fadeAnim,
+            },
+          ]}
+        >
+          <LinearGradient
+            colors={['#0F172A', '#1E293B', '#334155']}
+            style={styles.headerGradient}
+          >
+            <View style={styles.headerContent}>
+              <TouchableOpacity
+                onPress={() => navigation.goBack()}
+                style={styles.backButton}
+                activeOpacity={0.8}
+              >
+                <ChevronLeft color="#fff" size={24} strokeWidth={2} />
+              </TouchableOpacity>
+              <View style={styles.headerTextContainer}>
+                <Text style={styles.headerTitle} numberOfLines={1}>
+                  {subsections.length > 0 ? subsections[0].section.name : 'Loading...'}
+                </Text>
+                {Object.keys(existingScores).length > 0 && (
+                  <Text style={styles.headerSubtitle}>
+                    {Object.keys(existingScores).length} item(s) previously assessed
+                  </Text>
+                )}
+              </View>
+              <View style={styles.headerSpacer} />
+            </View>
+          </LinearGradient>
+        </Animated.View>
+
+        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+          <View style={styles.content}>
+            <Text style={styles.sectionTitle}>Assessment Categories</Text>
+            <Text style={styles.sectionDescription}>
+              Assess your infrastructure by uploading photos and selecting appropriate scores. Each category is scored from 1-3 based on best practices.
+              {Object.keys(existingScores).length > 0 && ' You can update your previous assessments.'}
+            </Text>
+
+            {subsections.map((subsection, index) => (
+              <CategoryCard key={subsection.id} subsection={subsection} index={index} />
+            ))}
+          </View>
+        </ScrollView>
       </SafeAreaView>
     );
-  }
-
-  return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0F172A" />
-
-      {/* Header */}
-      <Animated.View
-        style={[
-          styles.header,
-          {
-            opacity: fadeAnim,
-          },
-        ]}
-      >
-        <LinearGradient
-          colors={['#0F172A', '#1E293B', '#334155']}
-          style={styles.headerGradient}
-        >
-          <View style={styles.headerContent}>
-            <TouchableOpacity
-              onPress={() => navigation.goBack()}
-              style={styles.backButton}
-              activeOpacity={0.8}
-            >
-              <ChevronLeft color="#fff" size={24} strokeWidth={2} />
-            </TouchableOpacity>
-            <View style={styles.headerTextContainer}>
-              <Text style={styles.headerTitle} numberOfLines={1}>
-                {subsections.length > 0 ? subsections[0].section.name : 'Loading...'}
-              </Text>
-            </View>
-            <View style={styles.headerSpacer} />
-          </View>
-        </LinearGradient>
-      </Animated.View>
-
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        <View style={styles.content}>
-          <Text style={styles.sectionTitle}>Assessment Categories</Text>
-          <Text style={styles.sectionDescription}>
-            Assess your infrastructure by uploading photos and selecting appropriate scores. Each category is scored from 1-3 based on best practices.
-          </Text>
-
-          {subsections.map((subsection, index) => (
-            <CategoryCard key={subsection.id} subsection={subsection} index={index} />
-          ))}
-        </View>
-      </ScrollView>
-    </SafeAreaView>
-  );
-};
+  };
 
 const styles = StyleSheet.create({
   container: {
@@ -661,9 +807,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   headerSubtitle: {
-    fontSize: 14,
+    fontSize: 12,
     color: '#94A3B8',
     marginTop: 2,
+    textAlign: 'center',
   },
   headerSpacer: {
     width: 48,
@@ -729,6 +876,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#fff',
+  },
+  categorySubtitle: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.8)',
+    marginTop: 2,
   },
   categoryRight: {
     flexDirection: 'row',
@@ -810,11 +962,30 @@ const styles = StyleSheet.create({
     width: '100%',
     marginTop: 16,
   },
+  scoreSelectorHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
   scoreSelectorTitle: {
     fontSize: 16,
     fontWeight: 'bold',
     color: '#1E293B',
-    marginBottom: 12,
+  },
+  existingScoreIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3E8FF',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  existingScoreText: {
+    fontSize: 12,
+    color: '#8B5CF6',
+    marginLeft: 4,
+    fontWeight: '500',
   },
   scoreOption: {
     borderWidth: 2,

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import Toast from 'react-native-toast-message';
 import {
   View,
   Text,
@@ -7,7 +8,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Animated,
-  Alert,
+
   StatusBar,
   ScrollView,
   Dimensions,
@@ -111,43 +112,42 @@ const LoginScreen: React.FC<{ navigation: LoginScreenNavigationProp }> = ({ navi
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleGetLocation = async () => {
-    if (Platform.OS === 'android') {
-      try {
-        const granted = await PermissionsAndroid.request(
-          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-          {
-            title: 'Location Permission',
-            message: 'This app needs access to your location for registration.',
-            buttonNeutral: 'Ask Me Later',
-            buttonNegative: 'Cancel',
-            buttonPositive: 'OK',
-          },
-        );
-        if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
-          Alert.alert('Permission Denied', 'Location permission is required to sign up.');
-          return;
+  const handleGetLocation = (): Promise<{ latitude: number; longitude: number }> => {
+    return new Promise(async (resolve, reject) => {
+      if (Platform.OS === 'android') {
+        try {
+          const granted = await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+            {
+              title: 'Location Permission',
+              message: 'This app needs access to your location for registration.',
+              buttonNeutral: 'Ask Me Later',
+              buttonNegative: 'Cancel',
+              buttonPositive: 'OK',
+            },
+          );
+          if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+            return reject(new Error('Location permission is required to sign up.'));
+          }
+        } catch (err) {
+          console.warn(err);
+          return reject(err);
         }
-      } catch (err) {
-        console.warn(err);
-        return;
       }
-    }
 
-    Geolocation.getCurrentPosition(
-      (position) => {
-        setFormData(prev => ({
-          ...prev,
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        }));
-        Alert.alert('Success', 'Location fetched successfully!');
-      },
-      (error) => {
-        Alert.alert('Error', error.message);
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 },
-    );
+      Geolocation.getCurrentPosition(
+        (position) => {
+          resolve({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          });
+        },
+        (error) => {
+          reject(error);
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 },
+      );
+    });
   };
 
   const handleSignUp = async () => {
@@ -163,52 +163,48 @@ const LoginScreen: React.FC<{ navigation: LoginScreenNavigationProp }> = ({ navi
       district,
       block,
       village,
-      latitude,
-      longitude,
     } = formData;
 
     if (!firstName || !phone || !password || !gender || !dob || !state || !district || !block || !village) {
-      Alert.alert('Error', 'Please fill all required fields.');
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Please fill all required fields.' });
       return;
     }
     if (password !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match.');
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Passwords do not match.' });
       return;
     }
-    if (!latitude || !longitude) {
-      Alert.alert('Error', 'Please fetch your location before signing up.');
-      return;
-    }
-
-    const payload = {
-      firstName,
-      surname,
-      contactNumber: `+91${phone}`,
-      password,
-      confirmPassword,
-      gender: gender.charAt(0).toUpperCase() + gender.slice(1),
-      dob,
-      state,
-      district,
-      block,
-      village,
-      latitude,
-      longitude,
-    };
 
     try {
+      const location = await handleGetLocation();
+
+      const payload = {
+        firstName,
+        surname,
+        contactNumber: `+91${phone}`,
+        password,
+        confirmPassword,
+        gender: gender.charAt(0).toUpperCase() + gender.slice(1),
+        dob,
+        state,
+        district,
+        block,
+        village,
+        latitude: location.latitude,
+        longitude: location.longitude,
+      };
+
       await registerUser(payload);
-      Alert.alert('Success', 'Account created successfully! Please log in.');
+      Toast.show({ type: 'success', text1: 'Success', text2: 'Account created successfully! Please log in.' });
       handleScreenTransition('login');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Registration failed:', error);
-      Alert.alert('Registration Failed', 'An error occurred during registration. Please try again.');
+      Toast.show({ type: 'error', text1: 'Registration Failed', text2: error.message || 'An error occurred during registration. Please try again.' });
     }
   };
 
   const handleLogin = async () => {
     if (!formData.phone || !formData.password) {
-      Alert.alert('Error', 'Please fill in all fields');
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Please fill in all fields' });
       return;
     }
     try {
@@ -223,17 +219,17 @@ const LoginScreen: React.FC<{ navigation: LoginScreenNavigationProp }> = ({ navi
             const loggedInUser = allUsers.find((user: UserType) => user.contactNumber === `+91${formData.phone}`);
 
       if (loggedInUser && loggedInUser.userId) {
-        Alert.alert('Success', 'Logged in successfully!');
+        Toast.show({ type: 'success', text1: 'Success', text2: 'Logged in successfully!' });
         // Navigate to the next screen with the found userId.
         navigation.navigate('HomeScreen', { userId: loggedInUser.userId });
       } else {
         // This error means login was successful, but we couldn't find the user's details in the list.
         console.error('Login Error: Could not find user details after successful authentication.');
-        Alert.alert('Login Error', 'Could not retrieve user details after login. Please try again.');
+        Toast.show({ type: 'error', text1: 'Login Error', text2: 'Could not retrieve user details after login. Please try again.' });
       }
     } catch (error) {
       console.error(error);
-      Alert.alert('Login Failed', 'Invalid credentials or network error. Please try again.');
+      Toast.show({ type: 'error', text1: 'Login Failed', text2: 'Invalid credentials or network error. Please try again.' });
       // Optional: Add shake animation for failed login attempt
       Animated.sequence([
         Animated.timing(shakeAnimation, { toValue: 10, duration: 100, useNativeDriver: true }),
@@ -482,12 +478,12 @@ const LoginScreen: React.FC<{ navigation: LoginScreenNavigationProp }> = ({ navi
                 style={styles.input}
                 placeholderTextColor="#9ca3af"
               />
-              <TouchableOpacity
+              {/* <TouchableOpacity
                 onPress={() => setShowConfirmPassword(!showConfirmPassword)}
                 style={styles.eyeIcon}
               >
                 {showConfirmPassword ? <EyeOff color="#9ca3af" size={20} /> : <Eye color="#9ca3af" size={20} />}
-              </TouchableOpacity>
+              </TouchableOpacity> */}
             </View>
 
             <View style={styles.inputContainer}>
@@ -542,16 +538,7 @@ const LoginScreen: React.FC<{ navigation: LoginScreenNavigationProp }> = ({ navi
               />
             </View>
 
-            <View style={styles.locationContainer}>
-              <TouchableOpacity onPress={handleGetLocation} style={styles.locationButton}>
-                <Text style={styles.buttonText}>Get Location</Text>
-              </TouchableOpacity>
-              {formData.latitude && formData.longitude && (
-                <Text style={styles.locationText}>
-                  Location Captured: Lat: {formData.latitude.toFixed(4)}, Lon: {formData.longitude.toFixed(4)}
-                </Text>
-              )}
-            </View>
+
 
             <Animated.View style={{ transform: [{ scale: buttonScaleAnim }] }}>
               <TouchableOpacity
