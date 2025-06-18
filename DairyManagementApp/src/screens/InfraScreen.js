@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -42,6 +43,7 @@ import { getUserSubsectionScores } from '../api';
 const { width, height } = Dimensions.get('window');
 
 const InfraScreen = ({ navigation, route }) => {
+  const insets = useSafeAreaInsets();
   const { userId, sectionId = 1 } = route.params || {};
 
   const [subsections, setSubsections] = useState([]);
@@ -69,40 +71,38 @@ const InfraScreen = ({ navigation, route }) => {
   }, [sectionId, userId]);
 
   const initializeScreen = async () => {
-    await Promise.all([
-      loadPersistedData(),
-      fetchSubsections(),
-      loadExistingScores()
-    ]);
+    setLoading(true);
     
-    // Simplified initial animation
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 300,
-      useNativeDriver: true,
-    }).start();
+    try {
+      // First load subsections
+      await fetchSubsections();
+      
+      // Then load existing scores from API
+      await loadExistingScores();
+      
+      // Finally load any persisted local data
+      await loadPersistedData();
+      
+    } catch (error) {
+      console.error('Error initializing screen:', error);
+    } finally {
+      setLoading(false);
+      
+      // Simplified initial animation
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    }
   };
 
   // Load persisted data from AsyncStorage
   const loadPersistedData = async () => {
     try {
-      const [persistedScores, persistedExistingScores, persistedImages] = await Promise.all([
-        AsyncStorage.getItem(SCORES_STORAGE_KEY),
-        AsyncStorage.getItem(EXISTING_SCORES_STORAGE_KEY),
+      const [persistedImages] = await Promise.all([
         AsyncStorage.getItem(IMAGES_STORAGE_KEY),
       ]);
-
-      if (persistedScores) {
-        const parsedScores = JSON.parse(persistedScores);
-        setScores(parsedScores);
-        console.log('Loaded persisted scores:', parsedScores);
-      }
-
-      if (persistedExistingScores) {
-        const parsedExistingScores = JSON.parse(persistedExistingScores);
-        setExistingScores(parsedExistingScores);
-        console.log('Loaded persisted existing scores:', parsedExistingScores);
-      }
 
       if (persistedImages) {
         const parsedImages = JSON.parse(persistedImages);
@@ -124,49 +124,68 @@ const InfraScreen = ({ navigation, route }) => {
   };
 
   const loadExistingScores = async () => {
-    if (!userId || !sectionId) {
-      console.log('Missing userId or sectionId for loading existing scores');
+    if (!userId) {
+      console.log('Missing userId for loading existing scores');
       return;
     }
     
     try {
-      console.log(`Loading existing scores for userId: ${userId}, sectionId: ${sectionId}`);
+      console.log(`Loading existing scores for userId: ${userId}`);
+      
+      // Get all scores for this user
       const response = await getUserSubsectionScores(userId, sectionId);
       
-      console.log('API Response:', response);
+      console.log('API Response for existing scores:', response);
       
-      if (response && response.data) {
-        let scoresData = response.data;
+      if (response && response.data && Array.isArray(response.data)) {
+        const existingScoresMap = {};
+        const scoresMap = {};
         
-        // Handle different response structures
-        if (Array.isArray(scoresData) && scoresData.length > 0) {
-          const existingScoresMap = {};
-          const scoresMap = {};
+        response.data.forEach(scoreRecord => {
+          console.log('Processing score record:', scoreRecord);
           
-          scoresData.forEach(score => {
-            const subsectionId = score.subsectionId || score.subsection_id;
-            const scoreValue = score.scoreValue || score.score_value || score.score;
-            
-            if (subsectionId && scoreValue) {
-              existingScoresMap[subsectionId] = scoreValue;
-              scoresMap[subsectionId] = scoreValue;
-            }
-          });
+          // Extract subsection ID - handle different possible structures
+          let subsectionId;
+          if (scoreRecord.subsection && scoreRecord.subsection.id) {
+            subsectionId = scoreRecord.subsection.id;
+          } else if (scoreRecord.subsectionId) {
+            subsectionId = scoreRecord.subsectionId;
+          } else if (scoreRecord.subsection_id) {
+            subsectionId = scoreRecord.subsection_id;
+          }
           
-          console.log('Processed existing scores:', existingScoresMap);
-          console.log('Processed scores:', scoresMap);
+          // Extract score value - handle different possible structures
+          let scoreValue;
+          if (scoreRecord.scoreCategory && scoreRecord.scoreCategory.scoreValue) {
+            scoreValue = scoreRecord.scoreCategory.scoreValue;
+          } else if (scoreRecord.scoreValue) {
+            scoreValue = scoreRecord.scoreValue;
+          } else if (scoreRecord.score_value) {
+            scoreValue = scoreRecord.score_value;
+          } else if (scoreRecord.score) {
+            scoreValue = scoreRecord.score;
+          }
           
-          setExistingScores(existingScoresMap);
-          setScores(prev => ({ ...prev, ...scoresMap }));
+          console.log(`Extracted - subsectionId: ${subsectionId}, scoreValue: ${scoreValue}`);
           
-          // Persist the loaded data
-          await persistData(EXISTING_SCORES_STORAGE_KEY, existingScoresMap);
-          await persistData(SCORES_STORAGE_KEY, { ...scores, ...scoresMap });
-        } else {
-          console.log('No existing scores found in response');
-        }
+          if (subsectionId && scoreValue) {
+            existingScoresMap[subsectionId] = scoreValue;
+            scoresMap[subsectionId] = scoreValue;
+          }
+        });
+        
+        console.log('Final existing scores map:', existingScoresMap);
+        console.log('Final scores map:', scoresMap);
+        
+        setExistingScores(existingScoresMap);
+        setScores(scoresMap);
+        
+        // Persist the loaded data
+        await persistData(EXISTING_SCORES_STORAGE_KEY, existingScoresMap);
+        await persistData(SCORES_STORAGE_KEY, scoresMap);
+        
       } else {
-        console.log('No data in API response');
+        console.log('No existing scores found in response or invalid response structure');
       }
     } catch (error) {
       console.error('Error loading existing scores:', error);
@@ -176,7 +195,6 @@ const InfraScreen = ({ navigation, route }) => {
 
   const fetchSubsections = async () => {
     try {
-      setLoading(true);
       const response = await fetch(`http://3.6.143.181:8501/api/sections/${sectionId}/subsections`);
       const data = await response.json();
       
@@ -196,8 +214,6 @@ const InfraScreen = ({ navigation, route }) => {
           { text: 'Cancel', onPress: () => navigation.goBack() }
         ]
       );
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -457,7 +473,9 @@ const InfraScreen = ({ navigation, route }) => {
     
     // Update selected score when scores state changes
     useEffect(() => {
-      setSelectedScore(scores[subsection.id] || null);
+      const currentScore = scores[subsection.id];
+      console.log(`ScoreSelector for subsection ${subsection.id}: currentScore = ${currentScore}`);
+      setSelectedScore(currentScore || null);
     }, [scores, subsection.id]);
     
     // Use default descriptions if API data isn't loaded yet
@@ -465,6 +483,7 @@ const InfraScreen = ({ navigation, route }) => {
     const isLoadingDescriptions = loadingDescriptions[subsection.id];
 
     const handleScoreSelect = (score) => {
+      console.log(`Score selected for subsection ${subsection.id}: ${score}`);
       setSelectedScore(score);
     };
 
@@ -582,170 +601,172 @@ const InfraScreen = ({ navigation, route }) => {
     );
   };
 
-    const CategoryCard = ({ subsection, index }) => {
-      const isExpanded = expandedSections[subsection.id];
-      const hasImage = uploadedImages[subsection.id];
-      const score = scores[subsection.id];
-      const hasExistingScore = existingScores[subsection.id] !== undefined;
-      const SubsectionIcon = getIconForSubsection(subsection.name);
-      const ScoreIcon = getScoreIcon(score);
+  const CategoryCard = ({ subsection, index }) => {
+    const isExpanded = expandedSections[subsection.id];
+    const hasImage = uploadedImages[subsection.id];
+    const score = scores[subsection.id];
+    const hasExistingScore = existingScores[subsection.id] !== undefined;
+    const SubsectionIcon = getIconForSubsection(subsection.name);
+    const ScoreIcon = getScoreIcon(score);
 
-      return (
-        <View style={styles.categoryCard}>
-          <TouchableOpacity
-            style={styles.categoryHeader}
-            onPress={() => toggleSection(subsection.id)}
-            activeOpacity={0.8}
+    console.log(`CategoryCard for ${subsection.name} (ID: ${subsection.id}): score = ${score}, hasExistingScore = ${hasExistingScore}`);
+
+    return (
+      <View style={styles.categoryCard}>
+        <TouchableOpacity
+          style={styles.categoryHeader}
+          onPress={() => toggleSection(subsection.id)}
+          activeOpacity={0.8}
+        >
+          <LinearGradient
+            colors={['#334155', '#475569']}
+            style={styles.categoryHeaderGradient}
           >
-            <LinearGradient
-              colors={['#334155', '#475569']}
-              style={styles.categoryHeaderGradient}
-            >
-              <View style={styles.categoryHeaderContent}>
-                <View style={styles.categoryLeft}>
-                  <View style={styles.categoryIcon}>
-                    <SubsectionIcon color="#fff" size={20} strokeWidth={2} />
-                  </View>
-                  <View style={styles.categoryInfo}>
-                    <Text style={styles.categoryTitle}>
-                      {subsection.name}
-                    </Text>
-                    {hasExistingScore && (
-                      <Text style={styles.categorySubtitle}>Previously assessed</Text>
-                    )}
-                  </View>
+            <View style={styles.categoryHeaderContent}>
+              <View style={styles.categoryLeft}>
+                <View style={styles.categoryIcon}>
+                  <SubsectionIcon color="#fff" size={20} strokeWidth={2} />
                 </View>
-                <View style={styles.categoryRight}>
-                  {score && (
-                    <View style={[styles.scoreIndicator, { backgroundColor: getScoreColor(score) }]}>
-                      <ScoreIcon color="#fff" size={16} strokeWidth={2} />
-                    </View>
+                <View style={styles.categoryInfo}>
+                  <Text style={styles.categoryTitle}>
+                    {subsection.name}
+                  </Text>
+                  {hasExistingScore && (
+                    <Text style={styles.categorySubtitle}>Previously assessed</Text>
                   )}
-                  <View style={styles.chevronIcon}>
-                    {isExpanded ? (
-                      <ChevronUp color="#fff" size={20} strokeWidth={2} />
-                    ) : (
-                      <ChevronDown color="#fff" size={20} strokeWidth={2} />
-                    )}
-                  </View>
                 </View>
               </View>
-            </LinearGradient>
-          </TouchableOpacity>
-
-          {isExpanded && (
-            <View style={styles.categoryContent}>
-              {subsection.description && (
-                <Text style={styles.categoryDescription}>{subsection.description}</Text>
-              )}
-
-              <View style={styles.uploadSection}>
-                {hasImage ? (
-                  <View style={styles.imageContainer}>
-                    <Image source={{ uri: hasImage }} style={styles.uploadedImage} />
-                    <View style={styles.imageOverlay}>
-                      <TouchableOpacity
-                        style={styles.retakeButton}
-                        onPress={() => handleImageUpload(subsection)}
-                      >
-                        <Camera color="#fff" size={16} strokeWidth={2} />
-                        <Text style={styles.retakeText}>Retake</Text>
-                      </TouchableOpacity>
-                    </View>
+              <View style={styles.categoryRight}>
+                {score && (
+                  <View style={[styles.scoreIndicator, { backgroundColor: getScoreColor(score) }]}>
+                    <ScoreIcon color="#fff" size={16} strokeWidth={2} />
                   </View>
-                ) : (
-                  <TouchableOpacity
-                    style={styles.uploadButton}
-                    onPress={() => handleImageUpload(subsection)}
-                    activeOpacity={0.8}
-                  >
-                    <LinearGradient
-                      colors={['#8B5CF6', '#7C3AED']}
-                      style={styles.uploadGradient}
-                    >
-                      <Upload color="#fff" size={24} strokeWidth={2} />
-                      <Text style={styles.uploadText}>Upload Photo</Text>
-                      <Text style={styles.uploadSubtext}>Take a photo to assess this category</Text>
-                    </LinearGradient>
-                  </TouchableOpacity>
                 )}
-
-                <ScoreSelector subsection={subsection} />
+                <View style={styles.chevronIcon}>
+                  {isExpanded ? (
+                    <ChevronUp color="#fff" size={20} strokeWidth={2} />
+                  ) : (
+                    <ChevronDown color="#fff" size={20} strokeWidth={2} />
+                  )}
+                </View>
               </View>
             </View>
-          )}
-        </View>
-      );
-    };
+          </LinearGradient>
+        </TouchableOpacity>
 
-    if (loading) {
-      return (
-        <SafeAreaView style={styles.container}>
-          <StatusBar barStyle="light-content" backgroundColor="#0F172A" />
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#8B5CF6" />
-            <Text style={styles.loadingText}>Loading assessment categories...</Text>
+        {isExpanded && (
+          <View style={styles.categoryContent}>
+            {subsection.description && (
+              <Text style={styles.categoryDescription}>{subsection.description}</Text>
+            )}
+
+            <View style={styles.uploadSection}>
+              {hasImage ? (
+                <View style={styles.imageContainer}>
+                  <Image source={{ uri: hasImage }} style={styles.uploadedImage} />
+                  <View style={styles.imageOverlay}>
+                    <TouchableOpacity
+                      style={styles.retakeButton}
+                      onPress={() => handleImageUpload(subsection)}
+                    >
+                      <Camera color="#fff" size={16} strokeWidth={2} />
+                      <Text style={styles.retakeText}>Retake</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={styles.uploadButton}
+                  onPress={() => handleImageUpload(subsection)}
+                  activeOpacity={0.8}
+                >
+                  <LinearGradient
+                    colors={['#8B5CF6', '#7C3AED']}
+                    style={styles.uploadGradient}
+                  >
+                    <Upload color="#fff" size={24} strokeWidth={2} />
+                    <Text style={styles.uploadText}>Upload Photo</Text>
+                    <Text style={styles.uploadSubtext}>Take a photo to assess this category</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              )}
+
+              <ScoreSelector subsection={subsection} />
+            </View>
           </View>
-        </SafeAreaView>
-      );
-    }
+        )}
+      </View>
+    );
+  };
 
+  if (loading) {
     return (
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="#0F172A" />
-
-        {/* Header */}
-        <Animated.View
-          style={[
-            styles.header,
-            {
-              opacity: fadeAnim,
-            },
-          ]}
-        >
-          <LinearGradient
-            colors={['#0F172A', '#1E293B', '#334155']}
-            style={styles.headerGradient}
-          >
-            <View style={styles.headerContent}>
-              <TouchableOpacity
-                onPress={() => navigation.goBack()}
-                style={styles.backButton}
-                activeOpacity={0.8}
-              >
-                <ChevronLeft color="#fff" size={24} strokeWidth={2} />
-              </TouchableOpacity>
-              <View style={styles.headerTextContainer}>
-                <Text style={styles.headerTitle} numberOfLines={1}>
-                  {subsections.length > 0 ? subsections[0].section.name : 'Loading...'}
-                </Text>
-                {Object.keys(existingScores).length > 0 && (
-                  <Text style={styles.headerSubtitle}>
-                    {Object.keys(existingScores).length} item(s) previously assessed
-                  </Text>
-                )}
-              </View>
-              <View style={styles.headerSpacer} />
-            </View>
-          </LinearGradient>
-        </Animated.View>
-
-        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-          <View style={styles.content}>
-            <Text style={styles.sectionTitle}>Assessment Categories</Text>
-            <Text style={styles.sectionDescription}>
-              Assess your infrastructure by uploading photos and selecting appropriate scores. Each category is scored from 1-3 based on best practices.
-              {Object.keys(existingScores).length > 0 && ' You can update your previous assessments.'}
-            </Text>
-
-            {subsections.map((subsection, index) => (
-              <CategoryCard key={subsection.id} subsection={subsection} index={index} />
-            ))}
-          </View>
-        </ScrollView>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#8B5CF6" />
+          <Text style={styles.loadingText}>Loading assessment categories...</Text>
+        </View>
       </SafeAreaView>
     );
-  };
+  }
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#0F172A" />
+
+      {/* Header */}
+      <Animated.View
+        style={[
+          styles.header,
+          {
+            opacity: fadeAnim,
+          },
+        ]}
+      >
+        <LinearGradient
+          colors={['#0F172A', '#1E293B', '#334155']}
+          style={styles.headerGradient}
+        >
+          <View style={styles.headerContent}>
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              style={styles.backButton}
+              activeOpacity={0.8}
+            >
+              <ChevronLeft color="#fff" size={24} strokeWidth={2} />
+            </TouchableOpacity>
+            <View style={styles.headerTextContainer}>
+              <Text style={styles.headerTitle} numberOfLines={1}>
+                {subsections.length > 0 ? subsections[0].section.name : 'Loading...'}
+              </Text>
+              {Object.keys(existingScores).length > 0 && (
+                <Text style={styles.headerSubtitle}>
+                  {Object.keys(existingScores).length} item(s) previously assessed
+                </Text>
+              )}
+            </View>
+            <View style={styles.headerSpacer} />
+          </View>
+        </LinearGradient>
+      </Animated.View>
+
+      <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 16 }} style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        <View style={styles.content}>
+          <Text style={styles.sectionTitle}>Assessment Categories</Text>
+          <Text style={styles.sectionDescription}>
+            Assess your infrastructure by uploading photos and selecting appropriate scores. Each category is scored from 1-3 based on best practices.
+            {Object.keys(existingScores).length > 0 && ' You can update your previous assessments.'}
+          </Text>
+
+          {subsections.map((subsection, index) => (
+            <CategoryCard key={subsection.id} subsection={subsection} index={index} />
+          ))}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+};
 
 const styles = StyleSheet.create({
   container: {

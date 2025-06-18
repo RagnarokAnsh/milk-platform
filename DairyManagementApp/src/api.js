@@ -40,12 +40,12 @@ export const getBuffaloesByUserId = (userId) => {
 };
 
 // Update APIs
-export const updateCowInfo = (cowId, formData) => {
-  return api.put(`/cows/info/${cowId}`, formData);
+export const updateCowInfo = (userId, formData) => {
+  return api.put(`/cows/info/user/${userId}`, formData);
 };
 
-export const updateBuffaloInfo = (buffaloId, formData) => {
-  return api.put(`/buffaloes/info/${buffaloId}`, formData);
+export const updateBuffaloInfo = (userId, formData) => {
+  return api.put(`/buffaloes/info/user/${userId}`, formData);
 };
 
 // Score APIs

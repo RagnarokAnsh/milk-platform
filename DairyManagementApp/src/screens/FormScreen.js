@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -26,13 +27,78 @@ import {
 
 const { width } = Dimensions.get('window');
 
+// Move AnimatedInput outside of FormScreen to prevent re-creation
+const AnimatedInput = React.memo(({ label, value, onChangeText, keyboardType = 'numeric', icon }) => {
+  const inputAnim = useRef(new Animated.Value(0)).current;
+  const [isFocused, setIsFocused] = useState(false);
+
+  useEffect(() => {
+    Animated.timing(inputAnim, {
+      toValue: isFocused ? 1 : 0,
+      duration: 200,
+      useNativeDriver: false,
+    }).start();
+  }, [isFocused, inputAnim]);
+
+  const handleFocus = useCallback(() => setIsFocused(true), []);
+  const handleBlur = useCallback(() => setIsFocused(false), []);
+
+  return (
+    <Animated.View
+      style={[
+        styles.inputContainer,
+        {
+          borderColor: inputAnim.interpolate({
+            inputRange: [0, 1],
+            outputRange: ['#E2E8F0', '#8B5CF6'],
+          }),
+          shadowOpacity: inputAnim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0, 0.1],
+          }),
+        },
+      ]}
+    >
+      <Text style={styles.inputLabel}>{label}</Text>
+      <TextInput
+        style={styles.input}
+        placeholder={`Enter ${label.toLowerCase()}`}
+        placeholderTextColor="#94A3B8"
+        value={value}
+        onChangeText={onChangeText}
+        keyboardType={keyboardType}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
+      />
+    </Animated.View>
+  );
+});
+
+// Move BreedInput outside of FormScreen to prevent re-creation
+const BreedInput = React.memo(({ breed, value, onChangeText, type }) => (
+  <View style={styles.breedContainer}>
+    <View style={styles.breedLabel}>
+      <Text style={styles.breedName}>{breed}</Text>
+    </View>
+    <TextInput
+      style={styles.breedInput}
+      placeholder="Count"
+      placeholderTextColor="#94A3B8"
+      keyboardType="numeric"
+      value={value}
+      onChangeText={onChangeText}
+      textAlign="center"
+    />
+  </View>
+));
+
 const FormScreen = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
   const userId = route.params?.userId;
   
   // Animation refs
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
-
 
   if (!userId) {
     Alert.alert('Error', 'User ID is missing. Please log in again.');
@@ -71,8 +137,6 @@ const FormScreen = ({ route, navigation }) => {
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [focusedInput, setFocusedInput] = useState(null);
-  const [progressPercentage, setProgressPercentage] = useState('0%');
 
   useEffect(() => {
     Animated.parallel([
@@ -151,15 +215,50 @@ const FormScreen = ({ route, navigation }) => {
     }
   };
 
-  const handleCowChange = (field, value) => setCowData({ ...cowData, [field]: value });
-  const handleBuffaloChange = (field, value) => setBuffaloData({ ...buffaloData, [field]: value });
+  // Stable handler functions using useCallback
+  const handleCowFieldChange = useCallback((field, value) => {
+    setCowData(prevData => ({ ...prevData, [field]: value }));
+  }, []);
 
-  const handleBreedChange = (type, index, value) => {
-    const data = type === 'cow' ? cowData : buffaloData;
-    const setData = type === 'cow' ? setCowData : setBuffaloData;
-    const newBreeds = [...data.breeds];
-    newBreeds[index].count = value;
-    setData({ ...data, breeds: newBreeds });
+  const handleBuffaloFieldChange = useCallback((field, value) => {
+    setBuffaloData(prevData => ({ ...prevData, [field]: value }));
+  }, []);
+
+  const handleCowBreedChange = useCallback((index, value) => {
+    setCowData(prevData => {
+      const newBreeds = [...prevData.breeds];
+      newBreeds[index].count = value;
+      return { ...prevData, breeds: newBreeds };
+    });
+  }, []);
+
+  const handleBuffaloBreedChange = useCallback((index, value) => {
+    setBuffaloData(prevData => {
+      const newBreeds = [...prevData.breeds];
+      newBreeds[index].count = value;
+      return { ...prevData, breeds: newBreeds };
+    });
+  }, []);
+
+  // Create stable individual handlers
+  const cowHandlers = {
+    total: useCallback((value) => handleCowFieldChange('total', value), [handleCowFieldChange]),
+    milking: useCallback((value) => handleCowFieldChange('milking', value), [handleCowFieldChange]),
+    dry: useCallback((value) => handleCowFieldChange('dry', value), [handleCowFieldChange]),
+    calvesHeifers: useCallback((value) => handleCowFieldChange('calvesHeifers', value), [handleCowFieldChange]),
+    hf: useCallback((value) => handleCowBreedChange(0, value), [handleCowBreedChange]),
+    jersey: useCallback((value) => handleCowBreedChange(1, value), [handleCowBreedChange]),
+    sahiwal: useCallback((value) => handleCowBreedChange(2, value), [handleCowBreedChange]),
+  };
+
+  const buffaloHandlers = {
+    total: useCallback((value) => handleBuffaloFieldChange('total', value), [handleBuffaloFieldChange]),
+    milking: useCallback((value) => handleBuffaloFieldChange('milking', value), [handleBuffaloFieldChange]),
+    dry: useCallback((value) => handleBuffaloFieldChange('dry', value), [handleBuffaloFieldChange]),
+    calvesHeifers: useCallback((value) => handleBuffaloFieldChange('calvesHeifers', value), [handleBuffaloFieldChange]),
+    murrah: useCallback((value) => handleBuffaloBreedChange(0, value), [handleBuffaloBreedChange]),
+    mehsana: useCallback((value) => handleBuffaloBreedChange(1, value), [handleBuffaloBreedChange]),
+    jaffarabadi: useCallback((value) => handleBuffaloBreedChange(2, value), [handleBuffaloBreedChange]),
   };
 
   const handleSubmit = async () => {
@@ -201,10 +300,8 @@ const FormScreen = ({ route, navigation }) => {
         };
 
         if (existingCowData) {
-          // Update existing cow data
-          promises.push(updateCowInfo(existingCowData.id, cowPayload));
+          promises.push(updateCowInfo(userId, cowPayload));
         } else {
-          // Create new cow data
           promises.push(submitCowInfo({ userId, ...cowPayload }));
         }
       }
@@ -220,10 +317,8 @@ const FormScreen = ({ route, navigation }) => {
         };
 
         if (existingBuffaloData) {
-          // Update existing buffalo data
-          promises.push(updateBuffaloInfo(existingBuffaloData.id, buffaloPayload));
+          promises.push(updateBuffaloInfo(userId, buffaloPayload));
         } else {
-          // Create new buffalo data
           promises.push(submitBuffaloInfo({ userId, ...buffaloPayload }));
         }
       }
@@ -245,66 +340,6 @@ const FormScreen = ({ route, navigation }) => {
       setIsSubmitting(false);
     }
   };
-
-  const AnimatedInput = ({ label, value, onChangeText, keyboardType = 'numeric', icon }) => {
-    const inputAnim = useRef(new Animated.Value(0)).current;
-    const isFocused = focusedInput === label;
-
-    useEffect(() => {
-      Animated.timing(inputAnim, {
-        toValue: isFocused ? 1 : 0,
-        duration: 200,
-        useNativeDriver: false,
-      }).start();
-    }, [isFocused]);
-
-    return (
-      <Animated.View
-        style={[
-          styles.inputContainer,
-          {
-            borderColor: inputAnim.interpolate({
-              inputRange: [0, 1],
-              outputRange: ['#E2E8F0', '#8B5CF6'],
-            }),
-            shadowOpacity: inputAnim.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0, 0.1],
-            }),
-          },
-        ]}
-      >
-        <Text style={styles.inputLabel}>{label}</Text>
-        <TextInput
-          style={styles.input}
-          placeholder={`Enter ${label.toLowerCase()}`}
-          placeholderTextColor="#94A3B8"
-          value={value}
-          onChangeText={onChangeText}
-          keyboardType={keyboardType}
-          onFocus={() => setFocusedInput(label)}
-          onBlur={() => setFocusedInput(null)}
-        />
-      </Animated.View>
-    );
-  };
-
-  const BreedInput = ({ breed, value, onChangeText, type }) => (
-    <View style={styles.breedContainer}>
-      <View style={styles.breedLabel}>
-        <Text style={styles.breedName}>{breed}</Text>
-      </View>
-      <TextInput
-        style={styles.breedInput}
-        placeholder="Count"
-        placeholderTextColor="#94A3B8"
-        keyboardType="numeric"
-        value={value}
-        onChangeText={onChangeText}
-        textAlign="center"
-      />
-    </View>
-  );
 
   const TabButton = ({ title, icon: Icon, isActive, onPress }) => (
     <TouchableOpacity
@@ -399,9 +434,9 @@ const FormScreen = ({ route, navigation }) => {
         />
       </Animated.View>
 
-      <ScrollView
+      <ScrollView 
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 16 }]}
         showsVerticalScrollIndicator={false}
       >
         <Animated.View
@@ -425,38 +460,47 @@ const FormScreen = ({ route, navigation }) => {
               <AnimatedInput
                 label="Total Cows"
                 value={cowData.total}
-                onChangeText={(v) => handleCowChange('total', v)}
+                onChangeText={cowHandlers.total}
               />
               
               <AnimatedInput
                 label="Milking Cows"
                 value={cowData.milking}
-                onChangeText={(v) => handleCowChange('milking', v)}
+                onChangeText={cowHandlers.milking}
               />
               
               <AnimatedInput
                 label="Dry Cows"
                 value={cowData.dry}
-                onChangeText={(v) => handleCowChange('dry', v)}
+                onChangeText={cowHandlers.dry}
               />
               
               <AnimatedInput
                 label="Calves & Heifers"
                 value={cowData.calvesHeifers}
-                onChangeText={(v) => handleCowChange('calvesHeifers', v)}
+                onChangeText={cowHandlers.calvesHeifers}
               />
 
               <Text style={styles.breedSectionTitle}>Cow Breeds</Text>
               <View style={styles.breedSection}>
-                {cowData.breeds.map((breed, index) => (
-                  <BreedInput
-                    key={breed.name}
-                    breed={breed.name}
-                    value={breed.count}
-                    onChangeText={(value) => handleBreedChange('cow', index, value)}
-                    type="cow"
-                  />
-                ))}
+                <BreedInput
+                  breed="HF"
+                  value={cowData.breeds[0].count}
+                  onChangeText={cowHandlers.hf}
+                  type="cow"
+                />
+                <BreedInput
+                  breed="Jersey"
+                  value={cowData.breeds[1].count}
+                  onChangeText={cowHandlers.jersey}
+                  type="cow"
+                />
+                <BreedInput
+                  breed="Sahiwal"
+                  value={cowData.breeds[2].count}
+                  onChangeText={cowHandlers.sahiwal}
+                  type="cow"
+                />
               </View>
             </View>
           ) : (
@@ -471,38 +515,47 @@ const FormScreen = ({ route, navigation }) => {
               <AnimatedInput
                 label="Total Buffaloes"
                 value={buffaloData.total}
-                onChangeText={(v) => handleBuffaloChange('total', v)}
+                onChangeText={buffaloHandlers.total}
               />
               
               <AnimatedInput
                 label="Milking Buffaloes"
                 value={buffaloData.milking}
-                onChangeText={(v) => handleBuffaloChange('milking', v)}
+                onChangeText={buffaloHandlers.milking}
               />
               
               <AnimatedInput
                 label="Dry Buffaloes"
                 value={buffaloData.dry}
-                onChangeText={(v) => handleBuffaloChange('dry', v)}
+                onChangeText={buffaloHandlers.dry}
               />
               
               <AnimatedInput
                 label="Calves & Heifers"
                 value={buffaloData.calvesHeifers}
-                onChangeText={(v) => handleBuffaloChange('calvesHeifers', v)}
+                onChangeText={buffaloHandlers.calvesHeifers}
               />
 
               <Text style={styles.breedSectionTitle}>Buffalo Breeds</Text>
               <View style={styles.breedSection}>
-                {buffaloData.breeds.map((breed, index) => (
-                  <BreedInput
-                    key={breed.name}
-                    breed={breed.name}
-                    value={breed.count}
-                    onChangeText={(value) => handleBreedChange('buffalo', index, value)}
-                    type="buffalo"
-                  />
-                ))}
+                <BreedInput
+                  breed="Murrah"
+                  value={buffaloData.breeds[0].count}
+                  onChangeText={buffaloHandlers.murrah}
+                  type="buffalo"
+                />
+                <BreedInput
+                  breed="Mehsana"
+                  value={buffaloData.breeds[1].count}
+                  onChangeText={buffaloHandlers.mehsana}
+                  type="buffalo"
+                />
+                <BreedInput
+                  breed="Jaffarabadi"
+                  value={buffaloData.breeds[2].count}
+                  onChangeText={buffaloHandlers.jaffarabadi}
+                  type="buffalo"
+                />
               </View>
             </View>
           )}

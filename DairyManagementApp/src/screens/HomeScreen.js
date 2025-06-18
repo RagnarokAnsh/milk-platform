@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 import {
   View,
@@ -28,6 +29,7 @@ const formatNumber = (num) => {
 };
 
 const HomeScreen = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
   const navState = useNavigationState(state => state);
   console.log('Current Navigation State:', JSON.stringify(navState, null, 2));
 
@@ -210,7 +212,7 @@ const HomeScreen = ({ route, navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { paddingBottom: insets.bottom }]}>
       <StatusBar barStyle="light-content" backgroundColor="#0F172A" />
       
       {/* Header */}
